@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chess — Instant Multiplayer Chess</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23739552'/%3E%3Crect x='4' y='4' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3Crect x='16' y='16' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="layout">
+    <!-- Left Column: Opponent Bar + Chessboard + Player Bar -->
+    <section class="board-column" aria-label="Chessboard area">
+      <div class="player-bar" id="top-player-bar">
+        <div class="player-meta">
+          <div class="player-identity">
+            <span class="color-swatch" id="top-color-swatch"></span>
+            <span class="player-name" id="top-player-name">Black</span>
+            <span class="player-elo" id="top-player-elo">(0)</span>
+            <span class="turn-pill hidden" id="top-turn-pill">Turn</span>
+          </div>
+          <div class="captured-row">
+            <div class="captured-pieces" id="top-captured"></div>
+            <span class="material-diff" id="top-material"></span>
+          </div>
+        </div>
+        <div class="clock-box hidden" id="top-clock">10:00</div>
+      </div>
+
+      <div class="board-shell" id="board-shell">
+        <div class="board" id="board" role="grid" aria-label="Chessboard"></div>
+
+        <!-- SVG Overlay for Right-Click Tactical Arrows -->
+        <svg
+          class="board-arrows"
+          id="board-arrows"
+          viewBox="0 0 800 800"
+          preserveAspectRatio="none"
+          aria-hidden="true"
+        ></svg>
+
+        <!-- Pawn Promotion Chooser -->
+        <div class="promotion-backdrop hidden" id="promotion-backdrop">
+          <div class="promotion-menu" id="promotion-menu" role="dialog" aria-label="Choose promotion piece"></div>
+        </div>
+      </div>
+
+      <div class="player-bar" id="bottom-player-bar">
+        <div class="player-meta">
+          <div class="player-identity">
+            <span class="color-swatch" id="bottom-color-swatch"></span>
+            <span class="player-name" id="bottom-player-name">White</span>
+            <span class="player-elo" id="bottom-player-elo">(0)</span>
+            <span class="turn-pill hidden" id="bottom-turn-pill">Turn</span>
+          </div>
+          <div class="captured-row">
+            <div class="captured-pieces" id="bottom-captured"></div>
+            <span class="material-diff" id="bottom-material"></span>
+          </div>
+        </div>
+        <div class="clock-box hidden" id="bottom-clock">10:00</div>
+      </div>
+    </section>
+
+    <!-- Right Column: Game Setup, Clocks, Status, Replayable Move History & Actions -->
+    <aside class="sidebar" aria-label="Game controls and move history">
+      <header class="sidebar-header">
+        <div class="brand">
+          <span class="brand-board-icon" aria-hidden="true"></span>
+          <h1 class="brand-title">Chess</h1>
+        </div>
+        <div class="header-tools">
+          <div class="theme-picker" role="group" aria-label="Board theme">
+            <button type="button" class="theme-dot theme-green active" data-theme="green" title="Classic Green"></button>
+            <button type="button" class="theme-dot theme-brown" data-theme="brown" title="Wood Brown"></button>
+            <button type="button" class="theme-dot theme-slate" data-theme="slate" title="Slate Blue"></button>
+          </div>
+          <button type="button" class="icon-btn" id="sound-toggle-btn" title="Toggle sound" aria-label="Toggle sound">
+            <svg id="sound-on-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
+            </svg>
+            <svg id="sound-off-icon" class="hidden" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <line x1="23" y1="9" x2="17" y2="15"></line>
+              <line x1="17" y1="9" x2="23" y2="15"></line>
+            </svg>
+          </button>
+          <span class="mode-badge" id="mode-badge">Local</span>
+        </div>
+      </header>
+
+      <!-- Game Room & Match Settings Box -->
+      <section class="game-box">
+        <!-- Temporary Display Name Bar -->
+        <div class="name-row" id="name-row">
+          <label class="name-label" for="player-name-input">Name</label>
+          <input
+            type="text"
+            class="name-input"
+            id="player-name-input"
+            maxlength="18"
+            placeholder="Guest"
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <span class="elo-preview" id="elo-preview">(0)</span>
+        </div>
+
+        <!-- View 1: Idle (Create Game or Join Game) -->
+        <div id="game-idle">
+          <button type="button" class="btn btn-primary btn-block" id="open-setup-btn">
+            Create Game
+          </button>
+          <div class="divider"><span>or join with code</span></div>
+          <form class="join-row" id="join-game-form" autocomplete="off">
+            <input
+              type="text"
+              class="code-input"
+              id="join-code-input"
+              placeholder="K7M4P"
+              aria-label="5-character game code"
+              spellcheck="false"
+              autocapitalize="characters"
+            >
+            <button type="submit" class="btn btn-secondary" id="join-game-btn">Join Game</button>
+          </form>
+        </div>
+
+        <!-- View 2: Match Setup (Time Control & Side Selection before creating code) -->
+        <div id="game-setup" class="hidden">
+          <div class="setup-top-row">
+            <span class="setup-heading">Match Settings</span>
+            <button type="button" class="link-btn" id="setup-back-btn">Back</button>
+          </div>
+
+          <div class="preset-row" id="preset-row">
+            <button type="button" class="preset-chip" data-min="1" data-inc="1">1+1</button>
+            <button type="button" class="preset-chip" data-min="3" data-inc="2">3+2</button>
+            <button type="button" class="preset-chip" data-min="5" data-inc="3">5+3</button>
+            <button type="button" class="preset-chip active" data-min="10" data-inc="5">10+5</button>
+            <button type="button" class="preset-chip" data-min="15" data-inc="10">15+10</button>
+            <button type="button" class="preset-chip" data-unlimited="1">No Clock</button>
+          </div>
+
+          <div class="sliders-group" id="sliders-group">
+            <div class="slider-field">
+              <div class="slider-label-row">
+                <span>Time per player</span>
+                <strong id="setup-minutes-label">10 min</strong>
+              </div>
+              <input type="range" id="setup-minutes-slider" min="1" max="60" value="10">
+            </div>
+
+            <div class="slider-field">
+              <div class="slider-label-row">
+                <span>Gain per turn</span>
+                <strong id="setup-increment-label">+5 sec</strong>
+              </div>
+              <input type="range" id="setup-increment-slider" min="0" max="60" value="5">
+            </div>
+          </div>
+
+          <div class="side-select-row">
+            <span class="side-select-label">Play as</span>
+            <div class="side-buttons" id="side-buttons">
+              <button type="button" class="side-btn active" data-side="w">White</button>
+              <button type="button" class="side-btn" data-side="random">Random</button>
+              <button type="button" class="side-btn" data-side="b">Black</button>
+            </div>
+          </div>
+
+          <button type="button" class="btn btn-primary btn-block" id="create-game-btn">
+            Start &amp; Get Code
+          </button>
+        </div>
+
+        <!-- View 3: Waiting for Opponent -->
+        <div id="game-waiting" class="hidden">
+          <div class="game-label" id="waiting-summary">Game Code — Waiting for opponent</div>
+          <div class="code-display-row">
+            <div class="code-display" id="game-code-display">-----</div>
+            <button type="button" class="btn btn-secondary btn-sm" id="copy-code-btn">Copy</button>
+          </div>
+          <button type="button" class="btn btn-primary btn-block" id="copy-link-btn">
+            Copy Invite Link
+          </button>
+          <button type="button" class="btn btn-subtle btn-block" id="cancel-game-btn">
+            Cancel Game
+          </button>
+        </div>
+
+        <!-- View 4: Active Online Game -->
+        <div id="game-connected" class="hidden">
+          <div class="connected-row">
+            <div class="connected-info">
+              <span class="status-dot"></span>
+              <span>Game <strong id="active-game-code">-----</strong></span>
+              <span class="locked-tag" id="active-time-tag">10+5</span>
+            </div>
+            <button type="button" class="btn btn-subtle btn-sm" id="leave-game-btn">Leave</button>
+          </div>
+        </div>
+
+        <p class="game-feedback hidden" id="game-feedback" role="status"></p>
+      </section>
+
+      <!-- Game Turn / Result Banner -->
+      <div class="status-banner" id="status-banner" role="status">White to move</div>
+
+      <!-- Incoming Draw Offer Prompt -->
+      <div class="draw-offer-banner hidden" id="draw-offer-banner">
+        <span>Opponent offers a draw</span>
+        <div class="draw-offer-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="accept-draw-btn">Accept</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="decline-draw-btn">Decline</button>
+        </div>
+      </div>
+
+      <!-- Algebraic Move History + Replay Navigation -->
+      <div class="moves-section">
+        <div class="moves-header">
+          <span>Moves</span>
+          <button type="button" class="pgn-btn" id="copy-pgn-btn" title="Copy moves as PGN">Copy PGN</button>
+        </div>
+        <div class="move-list" id="move-list" aria-live="polite"></div>
+        <div class="replay-bar" aria-label="Move history navigation">
+          <button type="button" class="replay-btn" id="nav-first-btn" title="Start position (Up Arrow)" aria-label="First move">|&lt;</button>
+          <button type="button" class="replay-btn" id="nav-prev-btn" title="Previous move (Left Arrow)" aria-label="Previous move">&lt;</button>
+          <button type="button" class="replay-btn" id="nav-next-btn" title="Next move (Right Arrow)" aria-label="Next move">&gt;</button>
+          <button type="button" class="replay-btn" id="nav-last-btn" title="Live board (Down Arrow)" aria-label="Latest move">&gt;|</button>
+        </div>
+      </div>
+
+      <!-- Footer Action Buttons -->
+      <footer class="controls-footer">
+        <div class="controls-row" id="local-controls">
+          <button type="button" class="btn btn-secondary" id="reset-local-btn">Reset Board</button>
+          <button type="button" class="btn btn-secondary" id="flip-board-btn">Flip Board</button>
+        </div>
+
+        <div class="controls-row hidden" id="online-controls">
+          <button type="button" class="btn btn-secondary btn-compact" id="draw-btn">Offer Draw</button>
+          <button type="button" class="btn btn-secondary btn-compact" id="resign-btn">Resign</button>
+          <button type="button" class="btn btn-primary btn-compact" id="rematch-btn" disabled>Rematch</button>
+        </div>
+      </footer>
+    </aside>
+  </main>
+
+  <!-- Floating Piece Layer for Smooth Drag-and-Drop -->
+  <img id="drag-ghost" class="drag-ghost hidden" alt="" draggable="false">
+
+  <!-- PeerJS (WebRTC P2P Networking — No Backend Needed) -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"
+    onerror="var s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';document.head.appendChild(s);"
+  ></script>
+  <script src="game.js"></script>
+</body>
+</html>
