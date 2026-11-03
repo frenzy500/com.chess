@@ -19,12 +19,15 @@
             <span class="player-elo" id="top-player-elo">(0)</span>
             <span class="turn-pill hidden" id="top-turn-pill">Turn</span>
           </div>
-          <div class="captured-row">
+          <div class="captured-row" id="top-captured-row">
             <div class="captured-pieces" id="top-captured"></div>
             <span class="material-diff" id="top-material"></span>
           </div>
         </div>
-        <div class="clock-box hidden" id="top-clock">10:00</div>
+        <div class="player-right">
+          <div class="pocket-bar hidden" id="top-pocket" role="group" aria-label="Opponent pocket pieces"></div>
+          <div class="clock-box hidden" id="top-clock">10:00</div>
+        </div>
       </div>
 
       <div class="board-shell" id="board-shell">
@@ -53,12 +56,15 @@
             <span class="player-elo" id="bottom-player-elo">(0)</span>
             <span class="turn-pill hidden" id="bottom-turn-pill">Turn</span>
           </div>
-          <div class="captured-row">
+          <div class="captured-row" id="bottom-captured-row">
             <div class="captured-pieces" id="bottom-captured"></div>
             <span class="material-diff" id="bottom-material"></span>
           </div>
         </div>
-        <div class="clock-box hidden" id="bottom-clock">10:00</div>
+        <div class="player-right">
+          <div class="pocket-bar hidden" id="bottom-pocket" role="group" aria-label="Your pocket pieces"></div>
+          <div class="clock-box hidden" id="bottom-clock">10:00</div>
+        </div>
       </div>
     </section>
 
@@ -128,12 +134,20 @@
           </form>
         </div>
 
-        <!-- View 2: Match Setup (Time Control & Side Selection before creating code) -->
+        <!-- View 2: Match Setup (Variant, Time Control & Side Selection before creating code) -->
         <div id="game-setup" class="hidden">
           <div class="setup-top-row">
             <span class="setup-heading">Match Settings</span>
             <button type="button" class="link-btn" id="setup-back-btn">Back</button>
           </div>
+
+          <div class="variant-grid" id="setup-variant-grid" role="group" aria-label="Chess variant">
+            <button type="button" class="variant-btn active" data-variant="standard">Standard</button>
+            <button type="button" class="variant-btn" data-variant="cannibal">Cannibal Chess</button>
+            <button type="button" class="variant-btn" data-variant="crazyhouse">Crazyhouse</button>
+            <button type="button" class="variant-btn" data-variant="fog">Fog of War</button>
+          </div>
+          <p class="variant-desc" id="setup-variant-desc">Classic chess rules.</p>
 
           <div class="preset-row" id="preset-row">
             <button type="button" class="preset-chip" data-min="1" data-inc="1">1+1</button>
@@ -197,6 +211,7 @@
             <div class="connected-info">
               <span class="status-dot"></span>
               <span>Game <strong id="active-game-code">-----</strong></span>
+              <span class="locked-tag variant-tag hidden" id="active-variant-tag">Standard</span>
               <span class="locked-tag" id="active-time-tag">10+5</span>
             </div>
             <button type="button" class="btn btn-subtle btn-sm" id="leave-game-btn">Leave</button>
@@ -235,6 +250,12 @@
 
       <!-- Footer Action Buttons -->
       <footer class="controls-footer">
+        <div class="local-variant-bar" id="local-variant-bar" role="group" aria-label="Local board variant">
+          <button type="button" class="local-variant-btn active" data-variant="standard" title="Classic chess rules">Standard</button>
+          <button type="button" class="local-variant-btn" data-variant="cannibal" title="Capture your own non-King pieces too">Cannibal</button>
+          <button type="button" class="local-variant-btn" data-variant="crazyhouse" title="Drop captured opponent pieces from your pocket">Crazyhouse</button>
+          <button type="button" class="local-variant-btn" data-variant="fog" title="Only see your pieces and legal moves — capture the King to win">Fog of War</button>
+        </div>
         <div class="controls-row" id="local-controls">
           <button type="button" class="btn btn-secondary" id="reset-local-btn">Reset Board</button>
           <button type="button" class="btn btn-secondary" id="flip-board-btn">Flip Board</button>

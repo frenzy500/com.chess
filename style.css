@@ -197,6 +197,89 @@ input,
   margin-left: 3px;
 }
 
+.player-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Crazyhouse Pocket Bank */
+.pocket-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+}
+
+.pocket-slot {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  padding: 2px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  touch-action: none;
+}
+
+.pocket-slot img {
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pocket-slot.empty {
+  opacity: 0.24;
+}
+
+.pocket-slot.usable {
+  cursor: grab;
+  border-color: #4f4c47;
+}
+
+.pocket-slot.usable:hover {
+  background: #383632;
+  border-color: #6b6861;
+}
+
+.pocket-slot.selected {
+  background: var(--sq-dark-hl);
+  border-color: var(--sq-light-hl);
+}
+
+.pocket-slot.premove-selected {
+  background: var(--sq-premove-dark);
+  border-color: var(--sq-premove-light);
+}
+
+.pocket-count {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #1a1917;
+  border: 1px solid #595651;
+  color: #f0efe9;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
 /* Digital Chess Clocks (Chess.com Dark/Light Active Contrast) */
 .clock-box {
   min-width: 88px;
@@ -284,6 +367,35 @@ input,
 
 .square.dark.premove {
   background: var(--sq-premove-dark);
+}
+
+/* Fog of War Shrouded Squares */
+.square.light.fog {
+  background: #42403d;
+}
+
+.square.dark.fog {
+  background: #33312e;
+}
+
+.square.light.fog.rc-mark {
+  background: #9f5548;
+}
+
+.square.dark.fog.rc-mark {
+  background: #874337;
+}
+
+.square.light.fog.premove {
+  background: #a4514b;
+}
+
+.square.dark.fog.premove {
+  background: #8d403b;
+}
+
+.square.fog .coord {
+  color: #7c7974;
 }
 
 .square.in-check {
@@ -673,7 +785,45 @@ input,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 7px;
+}
+
+.variant-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+  margin-bottom: 5px;
+}
+
+.variant-btn {
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 6px;
+  cursor: pointer;
+  text-align: center;
+}
+
+.variant-btn:hover {
+  color: var(--text-main);
+  border-color: #57544e;
+}
+
+.variant-btn.active {
+  background: #2d3c20;
+  border-color: var(--accent-green);
+  color: #d7f2b8;
+}
+
+.variant-desc {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-muted);
 }
 
 .setup-heading {
@@ -859,6 +1009,13 @@ input,
   border-radius: 3px;
 }
 
+.variant-tag {
+  color: #d7f2b8;
+  background: #28331e;
+  border-color: #4f6d31;
+  font-weight: 600;
+}
+
 .game-feedback {
   margin: 9px 0 0;
   font-size: 12px;
@@ -1037,9 +1194,42 @@ input,
 
 /* Footer Controls & Buttons */
 .controls-footer {
-  padding: 10px 14px;
+  padding: 9px 14px 10px;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-panel);
+}
+
+.local-variant-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  margin-bottom: 7px;
+}
+
+.local-variant-btn {
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 5px 2px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.local-variant-btn:hover {
+  color: var(--text-main);
+  border-color: #57544e;
+}
+
+.local-variant-btn.active {
+  background: #2d3c20;
+  border-color: var(--accent-green);
+  color: #d7f2b8;
 }
 
 .controls-row {
@@ -1158,5 +1348,21 @@ input,
 
   .move-list {
     max-height: 170px;
+  }
+
+  .pocket-slot {
+    width: 28px;
+    height: 28px;
+  }
+
+  .pocket-slot img {
+    width: 23px;
+    height: 23px;
+  }
+
+  .clock-box {
+    min-width: 76px;
+    padding: 5px 9px;
+    font-size: 16px;
   }
 }
