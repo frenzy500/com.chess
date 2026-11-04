@@ -2104,6 +2104,7 @@ function startNewMatchAsHost(isRematch = false) {
 
   playSound('gameStart');
   renderAll();
+  if (!isRematch) scrollBoardIntoViewOnMobile();
 }
 
 function handleHostIncomingData(data) {
@@ -2269,6 +2270,7 @@ function handleGuestIncomingData(data) {
     setGameFeedback('');
     playSound('gameStart');
     renderAll();
+    scrollBoardIntoViewOnMobile();
   } else if (data.type === 'sync_state') {
     const hydrated = validateAndHydrateState(data.state);
     if (!hydrated) return;
@@ -2584,6 +2586,7 @@ const drag = {
   wasAlreadySelected: false,
   justDroppedMove: false,
   pointerId: null,
+  pointerType: 'mouse',
   startX: 0,
   startY: 0,
   originSq: null,
@@ -2600,13 +2603,68 @@ const rcDrag = {
 
 const dom = {};
 
+function scrollBoardIntoViewOnMobile() {
+  if (typeof window !== 'undefined' && window.innerWidth <= 900 && typeof window.scrollTo === 'function') {
+    try {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (_) {
+      window.scrollTo(0, 0);
+    }
+  }
+}
+
+function setMobileTab(tabName) {
+  const valid = ['play', 'variants', 'moves'].includes(tabName) ? tabName : 'play';
+  if (dom.sidebar) {
+    dom.sidebar.dataset.mobileTab = valid;
+  }
+  if (dom.mobileTabs) {
+    for (const btn of dom.mobileTabs.querySelectorAll('.mobile-tab-btn')) {
+      btn.classList.toggle('active', btn.dataset.tab === valid);
+    }
+  }
+}
+
 function cacheDom() {
+  dom.sidebar = document.getElementById('sidebar');
+  dom.gameBox = document.getElementById('game-box');
   dom.boardShell = document.getElementById('board-shell');
   dom.board = document.getElementById('board');
   dom.boardArrows = document.getElementById('board-arrows');
   dom.dragGhost = document.getElementById('drag-ghost');
   dom.promoBackdrop = document.getElementById('promotion-backdrop');
   dom.promoMenu = document.getElementById('promotion-menu');
+
+  dom.mobileVariantPill = document.getElementById('mobile-variant-pill');
+  dom.mobileVariantUse = document.getElementById('mobile-variant-pill-use');
+  dom.mobileVariantLabel = document.getElementById('mobile-variant-pill-label');
+  dom.mobileSoundBtn = document.getElementById('mobile-sound-btn');
+  dom.mobileSoundOn = document.getElementById('mobile-sound-on');
+  dom.mobileSoundOff = document.getElementById('mobile-sound-off');
+  dom.mobileModeBadge = document.getElementById('mobile-mode-badge');
+
+  dom.mobileStatusStrip = document.getElementById('mobile-status-strip');
+  dom.mobileStatusText = document.getElementById('mobile-status-text');
+  dom.mobileCancelPremoveBtn = document.getElementById('mobile-cancel-premove-btn');
+  dom.mobileDrawBanner = document.getElementById('mobile-draw-banner');
+  dom.mobAcceptDrawBtn = document.getElementById('mob-accept-draw-btn');
+  dom.mobDeclineDrawBtn = document.getElementById('mob-decline-draw-btn');
+  dom.mobPrevBtn = document.getElementById('mob-prev-btn');
+  dom.mobNextBtn = document.getElementById('mob-next-btn');
+  dom.mobFlipBtn = document.getElementById('mob-flip-btn');
+  dom.mobLocalActions = document.getElementById('mob-local-actions');
+  dom.mobResetBtn = document.getElementById('mob-reset-btn');
+  dom.mobPlayFriendBtn = document.getElementById('mob-play-friend-btn');
+  dom.mobOnlineActions = document.getElementById('mob-online-actions');
+  dom.mobDrawBtn = document.getElementById('mob-draw-btn');
+  dom.mobResignBtn = document.getElementById('mob-resign-btn');
+  dom.mobRematchBtn = document.getElementById('mob-rematch-btn');
+
+  dom.mobileTabs = document.getElementById('mobile-tabs');
+  dom.mobileVariantPanel = document.getElementById('mobile-variant-panel');
+  dom.mobileVariantsHint = document.getElementById('mobile-variants-hint');
+  dom.mobileVariantGrid = document.getElementById('mobile-variant-grid');
+  dom.mobileVariantDesc = document.getElementById('mobile-variant-desc');
 
   dom.topSwatch = document.getElementById('top-color-swatch');
   dom.topName = document.getElementById('top-player-name');
@@ -2657,11 +2715,13 @@ function cacheDom() {
 
   dom.joinForm = document.getElementById('join-game-form');
   dom.joinInput = document.getElementById('join-code-input');
+  dom.pasteCodeBtn = document.getElementById('paste-code-btn');
   dom.joinBtn = document.getElementById('join-game-btn');
 
   dom.waitingSummary = document.getElementById('waiting-summary');
   dom.codeDisplay = document.getElementById('game-code-display');
   dom.copyCodeBtn = document.getElementById('copy-code-btn');
+  dom.shareLinkBtn = document.getElementById('share-link-btn');
   dom.copyLinkBtn = document.getElementById('copy-link-btn');
   dom.cancelGameBtn = document.getElementById('cancel-game-btn');
 
@@ -2671,6 +2731,9 @@ function cacheDom() {
   dom.leaveGameBtn = document.getElementById('leave-game-btn');
 
   dom.statusBanner = document.getElementById('status-banner');
+  dom.premoveCancelBar = document.getElementById('premove-cancel-bar');
+  dom.premoveCountLabel = document.getElementById('premove-count-label');
+  dom.cancelPremoveBtn = document.getElementById('cancel-premove-btn');
   dom.drawOfferBanner = document.getElementById('draw-offer-banner');
   dom.acceptDrawBtn = document.getElementById('accept-draw-btn');
   dom.declineDrawBtn = document.getElementById('decline-draw-btn');
@@ -2911,7 +2974,13 @@ function positionPromotionMenu() {
   const to = pendingPromotion.to;
   const visCol = boardFlipped ? 7 - to.c : to.c;
   const visRow = boardFlipped ? 7 - to.r : to.r;
-  dom.promoMenu.style.left = `${visCol * 12.5}%`;
+  if (visCol === 7) {
+    dom.promoMenu.style.right = '0';
+    dom.promoMenu.style.left = 'auto';
+  } else {
+    dom.promoMenu.style.left = `${visCol * 12.5}%`;
+    dom.promoMenu.style.right = 'auto';
+  }
   if (visRow === 0) {
     dom.promoMenu.style.top = '0';
     dom.promoMenu.style.bottom = 'auto';
@@ -3725,7 +3794,10 @@ function updateDragHoverSquare(sq) {
 }
 
 function endDragVisuals() {
-  if (dom.dragGhost) dom.dragGhost.classList.add('hidden');
+  if (dom.dragGhost) {
+    dom.dragGhost.classList.add('hidden');
+    dom.dragGhost.classList.remove('touch-drag');
+  }
   if (dom.board) {
     const hiddenPiece = dom.board.querySelector('.piece.dragging-source');
     if (hiddenPiece) hiddenPiece.classList.remove('dragging-source');
@@ -3783,6 +3855,7 @@ function handlePocketPointerDown(e, sideColor, dropType) {
     drag.isPremoveDrag = false;
     drag.wasAlreadySelected = alreadySelected;
     drag.pointerId = e.pointerId;
+    drag.pointerType = e.pointerType || 'mouse';
     drag.startX = e.clientX;
     drag.startY = e.clientY;
     drag.originSq = null;
@@ -3804,6 +3877,7 @@ function handlePocketPointerDown(e, sideColor, dropType) {
     drag.isPremoveDrag = true;
     drag.wasAlreadySelected = alreadyPreSelected;
     drag.pointerId = e.pointerId;
+    drag.pointerType = e.pointerType || 'mouse';
     drag.startX = e.clientX;
     drag.startY = e.clientY;
     drag.originSq = null;
@@ -3897,6 +3971,7 @@ function handleBoardPointerDown(e) {
     drag.isPremoveDrag = false;
     drag.wasAlreadySelected = alreadySelected;
     drag.pointerId = e.pointerId;
+    drag.pointerType = e.pointerType || 'mouse';
     drag.startX = e.clientX;
     drag.startY = e.clientY;
     drag.originSq = sq;
@@ -3919,6 +3994,7 @@ function handleBoardPointerDown(e) {
     drag.isPremoveDrag = true;
     drag.wasAlreadySelected = alreadyPreSelected;
     drag.pointerId = e.pointerId;
+    drag.pointerType = e.pointerType || 'mouse';
     drag.startX = e.clientX;
     drag.startY = e.clientY;
     drag.originSq = sq;
@@ -3957,8 +4033,10 @@ function handleGlobalPointerMove(e) {
 
   const dx = e.clientX - drag.startX;
   const dy = e.clientY - drag.startY;
+  const isTouchPointer = (e.pointerType || drag.pointerType) === 'touch';
+  const dragThreshold = isTouchPointer ? 9 : 4;
 
-  if (!drag.moved && Math.hypot(dx, dy) >= 4) {
+  if (!drag.moved && Math.hypot(dx, dy) >= dragThreshold) {
     drag.moved = true;
     let originCode = null;
     if (drag.pocketType && drag.pocketColor) {
@@ -3977,6 +4055,7 @@ function handleGlobalPointerMove(e) {
     dom.dragGhost.style.width = `${piecePx}px`;
     dom.dragGhost.style.height = `${piecePx}px`;
     dom.dragGhost.src = getPieceSvgDataUri(originCode);
+    dom.dragGhost.classList.toggle('touch-drag', isTouchPointer);
     dom.dragGhost.classList.remove('hidden');
 
     if (drag.originSq) {
@@ -4646,6 +4725,10 @@ function renderStatusAndControls() {
   dom.openSetupBtn.disabled = net.mode === 'joining';
   dom.joinBtn.disabled = net.mode === 'joining';
   dom.joinInput.disabled = net.mode === 'joining';
+  if (dom.pasteCodeBtn) dom.pasteCodeBtn.disabled = net.mode === 'joining';
+
+  const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+  if (dom.shareLinkBtn) dom.shareLinkBtn.classList.toggle('hidden', !canNativeShare);
 
   const tcSummary = formatTimeSummary(
     clockState.timed,
@@ -4653,11 +4736,20 @@ function renderStatusAndControls() {
     clockState.incrementSec
   );
 
+  const activeVariantKey =
+    net.mode === 'setup' || net.mode === 'waiting'
+      ? setupConfig.variant || 'standard'
+      : gameState.variant || 'standard';
+  const pillVDef = getVariantDef(activeVariantKey);
+
   if (net.mode === 'online') {
     dom.modeBadge.textContent = opponentDisconnected ? 'Offline' : 'Online';
     dom.modeBadge.classList.toggle('online', !opponentDisconnected);
     dom.activeGameCode.textContent = net.roomCode || '-----';
-    if (dom.activeVariantTag) dom.activeVariantTag.textContent = vDef.name;
+    if (dom.activeVariantTag) {
+      dom.activeVariantTag.dataset.variant = gameState.variant || 'standard';
+      dom.activeVariantTag.textContent = vDef.name;
+    }
     dom.activeTimeTag.textContent = tcSummary;
   } else if (net.mode === 'waiting') {
     dom.modeBadge.textContent = 'Waiting';
@@ -4674,6 +4766,40 @@ function renderStatusAndControls() {
   } else {
     dom.modeBadge.textContent = 'Local';
     dom.modeBadge.classList.remove('online');
+  }
+
+  if (dom.mobileModeBadge) {
+    dom.mobileModeBadge.textContent = dom.modeBadge.textContent;
+    dom.mobileModeBadge.classList.toggle('online', dom.modeBadge.classList.contains('online'));
+  }
+
+  if (dom.mobileVariantPill) {
+    dom.mobileVariantPill.dataset.variant = activeVariantKey;
+  }
+  if (dom.mobileVariantUse && typeof dom.mobileVariantUse.setAttribute === 'function') {
+    dom.mobileVariantUse.setAttribute('href', `#icon-variant-${activeVariantKey}`);
+  }
+  if (dom.mobileVariantLabel) {
+    dom.mobileVariantLabel.textContent = pillVDef.shortName || pillVDef.name;
+  }
+
+  const variantLocked =
+    net.mode === 'online' || net.mode === 'waiting' || net.mode === 'joining';
+  if (dom.mobileVariantGrid) {
+    for (const btn of dom.mobileVariantGrid.querySelectorAll('.variant-btn')) {
+      btn.classList.toggle('active', btn.dataset.variant === activeVariantKey);
+      btn.disabled = variantLocked;
+    }
+  }
+  if (dom.mobileVariantDesc) {
+    dom.mobileVariantDesc.textContent = pillVDef.description;
+  }
+  if (dom.mobileVariantsHint) {
+    dom.mobileVariantsHint.textContent = variantLocked
+      ? 'Locked during online game'
+      : net.mode === 'setup'
+        ? 'Tap to select match variant'
+        : 'Tap to switch local board';
   }
 
   // Incoming draw offer banner
@@ -4755,6 +4881,47 @@ function renderStatusAndControls() {
 
   dom.statusBanner.textContent = statusText;
 
+  const hasActivePremoves =
+    net.mode === 'online' &&
+    gameState.status === 'playing' &&
+    !opponentDisconnected &&
+    premoveQueue.length > 0;
+  if (dom.premoveCancelBar) {
+    dom.premoveCancelBar.classList.toggle('hidden', !hasActivePremoves);
+  }
+  if (dom.premoveCountLabel && hasActivePremoves) {
+    dom.premoveCountLabel.textContent =
+      premoveQueue.length === 1 ? '1 premove queued' : `${premoveQueue.length} premoves queued`;
+  }
+  if (dom.mobileCancelPremoveBtn) {
+    dom.mobileCancelPremoveBtn.classList.toggle('hidden', !hasActivePremoves);
+    if (hasActivePremoves) {
+      dom.mobileCancelPremoveBtn.textContent =
+        premoveQueue.length > 1 ? `Clear (${premoveQueue.length})` : 'Clear Premove';
+    }
+  }
+
+  if (dom.mobileStatusStrip) {
+    dom.mobileStatusStrip.classList.toggle(
+      'game-over',
+      dom.statusBanner.classList.contains('game-over')
+    );
+    dom.mobileStatusStrip.classList.toggle(
+      'in-check',
+      dom.statusBanner.classList.contains('in-check')
+    );
+    dom.mobileStatusStrip.classList.toggle(
+      'viewing-past',
+      dom.statusBanner.classList.contains('viewing-past')
+    );
+  }
+  if (dom.mobileStatusText) {
+    dom.mobileStatusText.textContent = statusText;
+  }
+  if (dom.mobileDrawBanner) {
+    dom.mobileDrawBanner.classList.toggle('hidden', !incomingDraw);
+  }
+
   // Replay Navigation Buttons (disabled while live Fog of War is active; unlocked once game ends)
   const totalPlies = gameState.moveHistory.length;
   dom.navFirstBtn.disabled = fogActive || viewPly <= 0;
@@ -4763,35 +4930,74 @@ function renderStatusAndControls() {
   dom.navLastBtn.disabled = fogActive || viewPly >= totalPlies;
   dom.navLastBtn.classList.toggle('live-behind', !fogActive && viewPly < totalPlies);
 
+  if (dom.mobPrevBtn) dom.mobPrevBtn.disabled = fogActive || viewPly <= 0;
+  if (dom.mobNextBtn) dom.mobNextBtn.disabled = fogActive || viewPly >= totalPlies;
+  if (dom.mobLocalActions) dom.mobLocalActions.classList.toggle('hidden', net.mode === 'online');
+  if (dom.mobOnlineActions) dom.mobOnlineActions.classList.toggle('hidden', net.mode !== 'online');
+  if (dom.mobPlayFriendBtn) {
+    dom.mobPlayFriendBtn.disabled = net.mode === 'joining';
+    dom.mobPlayFriendBtn.textContent =
+      net.mode === 'waiting' ? `Code: ${net.roomCode || '-----'}` : 'Play Friend';
+  }
+
   // Online Action Buttons (Offer Draw, Resign, Rematch)
   if (net.mode === 'online') {
     const isPlaying = gameState.status === 'playing' && !opponentDisconnected;
     dom.resignBtn.disabled = !isPlaying;
+    if (dom.mobResignBtn) dom.mobResignBtn.disabled = !isPlaying;
     if (!isPlaying) resetResignConfirm();
 
     if (!isPlaying) {
       dom.drawBtn.disabled = true;
       dom.drawBtn.textContent = 'Offer Draw';
+      if (dom.mobDrawBtn) {
+        dom.mobDrawBtn.disabled = true;
+        dom.mobDrawBtn.textContent = 'Draw';
+      }
     } else if (net.drawOfferedBy === net.myColor) {
       dom.drawBtn.disabled = true;
       dom.drawBtn.textContent = 'Draw Sent';
+      if (dom.mobDrawBtn) {
+        dom.mobDrawBtn.disabled = true;
+        dom.mobDrawBtn.textContent = 'Sent';
+      }
     } else {
       dom.drawBtn.disabled = false;
       dom.drawBtn.textContent = 'Offer Draw';
+      if (dom.mobDrawBtn) {
+        dom.mobDrawBtn.disabled = false;
+        dom.mobDrawBtn.textContent = 'Draw';
+      }
     }
 
     if (opponentDisconnected || isPlaying) {
       dom.rematchBtn.disabled = true;
       dom.rematchBtn.textContent = 'Rematch';
+      if (dom.mobRematchBtn) {
+        dom.mobRematchBtn.disabled = true;
+        dom.mobRematchBtn.textContent = 'Rematch';
+      }
     } else if (net.myRematchWanted) {
       dom.rematchBtn.disabled = true;
       dom.rematchBtn.textContent = 'Sent...';
+      if (dom.mobRematchBtn) {
+        dom.mobRematchBtn.disabled = true;
+        dom.mobRematchBtn.textContent = 'Sent...';
+      }
     } else if (net.peerRematchWanted) {
       dom.rematchBtn.disabled = false;
       dom.rematchBtn.textContent = 'Accept Rematch';
+      if (dom.mobRematchBtn) {
+        dom.mobRematchBtn.disabled = false;
+        dom.mobRematchBtn.textContent = 'Accept';
+      }
     } else {
       dom.rematchBtn.disabled = false;
       dom.rematchBtn.textContent = 'Rematch';
+      if (dom.mobRematchBtn) {
+        dom.mobRematchBtn.disabled = false;
+        dom.mobRematchBtn.textContent = 'Rematch';
+      }
     }
   }
 }
@@ -5036,14 +5242,24 @@ function resetResignConfirm() {
     dom.resignBtn.textContent = 'Resign';
     dom.resignBtn.classList.remove('btn-danger');
   }
+  if (dom.mobResignBtn) {
+    dom.mobResignBtn.textContent = 'Resign';
+    dom.mobResignBtn.classList.remove('btn-danger');
+  }
 }
 
 function handleResignClick() {
   if (net.mode !== 'online' || gameState.status !== 'playing' || opponentDisconnected) return;
 
   if (!resignConfirmTimer) {
-    dom.resignBtn.textContent = 'Confirm?';
-    dom.resignBtn.classList.add('btn-danger');
+    if (dom.resignBtn) {
+      dom.resignBtn.textContent = 'Confirm?';
+      dom.resignBtn.classList.add('btn-danger');
+    }
+    if (dom.mobResignBtn) {
+      dom.mobResignBtn.textContent = 'Confirm?';
+      dom.mobResignBtn.classList.add('btn-danger');
+    }
     resignConfirmTimer = setTimeout(resetResignConfirm, 3000);
     return;
   }
@@ -5152,9 +5368,23 @@ function applyBoardTheme(themeName) {
 }
 
 function updateSoundToggleUI() {
-  if (!dom.soundOnIcon || !dom.soundOffIcon) return;
-  dom.soundOnIcon.classList.toggle('hidden', !soundEnabled);
-  dom.soundOffIcon.classList.toggle('hidden', soundEnabled);
+  if (dom.soundOnIcon && dom.soundOffIcon) {
+    dom.soundOnIcon.classList.toggle('hidden', !soundEnabled);
+    dom.soundOffIcon.classList.toggle('hidden', soundEnabled);
+  }
+  if (dom.mobileSoundOn && dom.mobileSoundOff) {
+    dom.mobileSoundOn.classList.toggle('hidden', !soundEnabled);
+    dom.mobileSoundOff.classList.toggle('hidden', soundEnabled);
+  }
+}
+
+function toggleSoundSetting() {
+  soundEnabled = !soundEnabled;
+  updateSoundToggleUI();
+  try {
+    localStorage.setItem('chess_sound_enabled', soundEnabled ? '1' : '0');
+  } catch (_) {}
+  if (soundEnabled) playSound('moveSelf');
 }
 
 function checkAutoJoinFromUrl() {
@@ -5169,6 +5399,7 @@ function checkAutoJoinFromUrl() {
 
   const code = extractCleanGameCode(rawCode);
   if (code.length === 5) {
+    setMobileTab('play');
     joinGameRoom(code);
   }
 }
@@ -5260,14 +5491,51 @@ function initUI() {
     dot.addEventListener('click', () => applyBoardTheme(dot.dataset.theme));
   }
 
-  dom.soundToggleBtn.addEventListener('click', () => {
-    soundEnabled = !soundEnabled;
-    updateSoundToggleUI();
-    try {
-      localStorage.setItem('chess_sound_enabled', soundEnabled ? '1' : '0');
-    } catch (_) {}
-    if (soundEnabled) playSound('moveSelf');
-  });
+  dom.soundToggleBtn.addEventListener('click', toggleSoundSetting);
+  if (dom.mobileSoundBtn) {
+    dom.mobileSoundBtn.addEventListener('click', toggleSoundSetting);
+  }
+
+  // Mobile Segmented Tabs & Variant Pill
+  if (dom.mobileTabs) {
+    dom.mobileTabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('.mobile-tab-btn');
+      if (!btn) return;
+      setMobileTab(btn.dataset.tab);
+    });
+  }
+
+  if (dom.mobileVariantPill) {
+    dom.mobileVariantPill.addEventListener('click', () => {
+      setMobileTab('variants');
+      if (dom.sidebar && typeof dom.sidebar.scrollIntoView === 'function') {
+        dom.sidebar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+  }
+
+  if (dom.mobileVariantGrid) {
+    dom.mobileVariantGrid.addEventListener('click', (e) => {
+      if (net.mode === 'online' || net.mode === 'waiting' || net.mode === 'joining') return;
+      const btn = e.target.closest('.variant-btn');
+      if (!btn) return;
+      const v = btn.dataset.variant;
+      if (!v || !Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v)) return;
+      setupConfig.variant = v;
+      if (net.mode === 'setup') {
+        syncSetupPanelUI();
+        renderStatusAndControls();
+        setMobileTab('play');
+      } else {
+        clearBoardTransientUI();
+        gameState = createInitialState(v);
+        viewPly = 0;
+        syncSetupPanelUI();
+        renderAll();
+        scrollBoardIntoViewOnMobile();
+      }
+    });
+  }
 
   // Temporary Display Name (+ live 0 / -67 Elo update!)
   dom.nameInput.addEventListener('input', () => {
@@ -5283,6 +5551,7 @@ function initUI() {
   dom.openSetupBtn.addEventListener('click', () => {
     setGameFeedback('');
     net.mode = 'setup';
+    setMobileTab('play');
     syncSetupPanelUI();
     renderAll();
   });
@@ -5372,9 +5641,59 @@ function initUI() {
     joinGameRoom(dom.joinInput.value);
   });
 
+  if (dom.pasteCodeBtn) {
+    dom.pasteCodeBtn.addEventListener('click', async () => {
+      if (net.mode === 'joining') return;
+      try {
+        if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+          dom.joinInput.focus();
+          setGameFeedback('Long-press the code box to paste your invite code.');
+          return;
+        }
+        const raw = await navigator.clipboard.readText();
+        const clean = extractCleanGameCode(raw);
+        if (clean) {
+          dom.joinInput.value = clean;
+          setGameFeedback('');
+          if (clean.length === 5) {
+            joinGameRoom(clean);
+          } else {
+            dom.joinInput.focus();
+          }
+        } else {
+          setGameFeedback('Clipboard did not contain a 5-character game code.');
+        }
+      } catch (_) {
+        dom.joinInput.focus();
+        setGameFeedback('Tap and hold the code box to paste.');
+      }
+    });
+  }
+
   dom.copyCodeBtn.addEventListener('click', () => {
     if (net.roomCode) copyTextWithFeedback(net.roomCode, dom.copyCodeBtn, 'Copy');
   });
+
+  if (dom.shareLinkBtn) {
+    dom.shareLinkBtn.addEventListener('click', async () => {
+      if (!net.roomCode) return;
+      const inviteUrl = buildInviteUrl(net.roomCode);
+      const vName = getVariantDef(setupConfig.variant).name;
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        try {
+          await navigator.share({
+            title: `${vName} — Chess Invite`,
+            text: `Play ${vName} with me! Code: ${net.roomCode}`,
+            url: inviteUrl
+          });
+          return;
+        } catch (err) {
+          if (err && err.name === 'AbortError') return;
+        }
+      }
+      copyTextWithFeedback(inviteUrl, dom.copyLinkBtn, 'Copy Invite Link');
+    });
+  }
 
   dom.copyLinkBtn.addEventListener('click', () => {
     if (net.roomCode) {
@@ -5408,32 +5727,73 @@ function initUI() {
   dom.navPrevBtn.addEventListener('click', () => stepHistoryTo(viewPly - 1));
   dom.navNextBtn.addEventListener('click', () => stepHistoryTo(viewPly + 1));
   dom.navLastBtn.addEventListener('click', () => stepHistoryTo(gameState.moveHistory.length));
+  if (dom.mobPrevBtn) dom.mobPrevBtn.addEventListener('click', () => stepHistoryTo(viewPly - 1));
+  if (dom.mobNextBtn) dom.mobNextBtn.addEventListener('click', () => stepHistoryTo(viewPly + 1));
 
   dom.copyPgnBtn.addEventListener('click', () => {
     copyTextWithFeedback(buildPGNString(), dom.copyPgnBtn, 'Copy PGN');
   });
 
-  // Footer Action Controls
-  dom.resetLocalBtn.addEventListener('click', () => {
+  if (dom.cancelPremoveBtn) {
+    dom.cancelPremoveBtn.addEventListener('click', () => {
+      cancelAllPremoves();
+    });
+  }
+  if (dom.mobileCancelPremoveBtn) {
+    dom.mobileCancelPremoveBtn.addEventListener('click', () => {
+      cancelAllPremoves();
+    });
+  }
+
+  // Footer & Mobile Dock Action Controls
+  const resetLocalBoard = () => {
     if (net.mode === 'online') return;
     const currentVariant = gameState.variant || setupConfig.variant || 'standard';
     clearBoardTransientUI();
     gameState = createInitialState(currentVariant);
     viewPly = 0;
     renderAll();
-  });
+  };
 
-  dom.flipBoardBtn.addEventListener('click', () => {
+  const toggleBoardFlip = () => {
     boardFlipped = !boardFlipped;
     positionPromotionMenu();
     renderAll();
-  });
+  };
+
+  dom.resetLocalBtn.addEventListener('click', resetLocalBoard);
+  if (dom.mobResetBtn) dom.mobResetBtn.addEventListener('click', resetLocalBoard);
+
+  dom.flipBoardBtn.addEventListener('click', toggleBoardFlip);
+  if (dom.mobFlipBtn) dom.mobFlipBtn.addEventListener('click', toggleBoardFlip);
+
+  if (dom.mobPlayFriendBtn) {
+    dom.mobPlayFriendBtn.addEventListener('click', () => {
+      if (net.mode === 'online' || net.mode === 'joining') return;
+      setMobileTab('play');
+      if (net.mode === 'local') {
+        setGameFeedback('');
+        net.mode = 'setup';
+        syncSetupPanelUI();
+        renderAll();
+      }
+      if (dom.gameBox && typeof dom.gameBox.scrollIntoView === 'function') {
+        dom.gameBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    });
+  }
 
   dom.drawBtn.addEventListener('click', handleOfferDrawClick);
   dom.acceptDrawBtn.addEventListener('click', handleAcceptDraw);
   dom.declineDrawBtn.addEventListener('click', handleDeclineDraw);
   dom.resignBtn.addEventListener('click', handleResignClick);
   dom.rematchBtn.addEventListener('click', handleRematchClick);
+
+  if (dom.mobDrawBtn) dom.mobDrawBtn.addEventListener('click', handleOfferDrawClick);
+  if (dom.mobAcceptDrawBtn) dom.mobAcceptDrawBtn.addEventListener('click', handleAcceptDraw);
+  if (dom.mobDeclineDrawBtn) dom.mobDeclineDrawBtn.addEventListener('click', handleDeclineDraw);
+  if (dom.mobResignBtn) dom.mobResignBtn.addEventListener('click', handleResignClick);
+  if (dom.mobRematchBtn) dom.mobRematchBtn.addEventListener('click', handleRematchClick);
 
   // Live 100ms clock refresh
   if (clockState.intervalId) clearInterval(clockState.intervalId);

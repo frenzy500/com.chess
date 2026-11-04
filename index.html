@@ -2,14 +2,82 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#262522">
   <title>Chess — Instant Multiplayer Chess</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23739552'/%3E%3Crect x='4' y='4' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3Crect x='16' y='16' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- Inline Vector Icon Sprite (Font Awesome 6 Free Solid CC-BY-4.0 & Game-Icons CC-BY-3.0) -->
+  <svg xmlns="http://www.w3.org/2000/svg" class="svg-sprite" aria-hidden="true">
+    <!-- Standard Chess: Classic Staunton Knight (fa6-solid:chess-knight) -->
+    <symbol id="icon-variant-standard" viewBox="0 0 448 512">
+      <path fill="currentColor" d="M96 48L82.7 61.3c-12 12-18.7 28.2-18.7 45.2v132.4c0 10.7 5.3 20.7 14.2 26.6l10.6 7c14.3 9.6 32.7 10.7 48.1 3l3.2-1.6c2.6-1.3 5-2.8 7.3-4.5l49.4-37c6.6-5 15.7-5 22.3 0c10.2 7.7 9.9 23.1-.7 30.3L90.4 350C73.9 361.3 64 380 64 400h320l28.9-159c2.1-11.3 3.1-22.8 3.1-34.3V192C416 86 330 0 224 0H83.8C72.9 0 64 8.9 64 19.8c0 7.5 4.2 14.3 10.9 17.7zm24 68a20 20 0 1 1 40 0a20 20 0 1 1-40 0M22.6 473.4c-4.2 4.2-6.6 10-6.6 16c0 12.5 10.1 22.6 22.6 22.6h370.7c12.5 0 22.6-10.1 22.6-22.6c0-6-2.4-11.8-6.6-16L384 432H64z"/>
+    </symbol>
+
+    <!-- Cannibal Chess: Sharp Predator Fangs (game-icons:pretty-fangs) -->
+    <symbol id="icon-variant-cannibal" viewBox="0 0 512 512">
+      <path fill="currentColor" d="M166.594 96.28c-41.99 38.54-97.77 74.975-147.47 86c40.138 14.206 107.59 18.608 153.282 9.532l1.22-.406v.188c.206-.043.418-.082.624-.125c53.26 31.326 94.218 32.182 151 0c.256.086.524.163.78.25l-.03-.314l7.594 2.625c.105.03.207.066.312.095c44.21 12.288 102.904 9.115 154.28-11.97c-59.524-9.648-124.87-51.613-155.092-85.874c-55.502 39.623-111 32.147-166.5 0zM28.72 206.688c11.626 22.318 32.612 57.64 64.905 94.813c-1.55-18.164-2.515-35.945-3.03-52.625c-22.18-11.265-42.998-25.28-61.876-42.188zm447.155 7.532c-20.55 14.733-43.1 27.315-66.938 37.624c-.607 17.746-1.732 36.683-3.5 55.937c33.976-34.915 56.833-69.604 70.438-93.56zm-322.313 3.186c-15.034 3.72-30.014 4.855-44.562 4.156c-.116 39.457 2.945 90.054 10.22 137.282c5.254 34.12 12.997 66.188 22.374 90.187l11.97-231.624zm192.5 0l11.97 231.625c9.376-23.998 17.12-56.066 22.374-90.186c7.274-47.228 10.335-97.825 10.22-137.28c-14.554.697-29.524-.435-44.563-4.158zM330.406 276.5c-53.08 10.905-108.715 11.398-161.156.03l-4.438 86.033c49.643 23.158 118.42 22.46 170-.5z"/>
+    </symbol>
+
+    <!-- Crazyhouse: Parachute Reinforcements Airdrop (fa6-solid:parachute-box) -->
+    <symbol id="icon-variant-crazyhouse" viewBox="0 0 512 512">
+      <path fill="currentColor" d="M383.5 192c.3-5.3.5-10.6.5-16c0-51-15.9-96-40.2-127.6C319.5 16.9 288.2 0 256 0s-63.5 16.9-87.8 48.4C143.9 80 128 125 128 176c0 5.4.2 10.7.5 16H240v128h-32c-7 0-13.7 1.5-19.7 4.2L68.2 192h28.3c-.3-5.3-.5-10.6-.5-16c0-64 22.2-121.2 57.1-159.3C62 49.3 18.6 122.6 4.2 173.6C1.5 183.1 9 192 18.9 192h6l140.3 154.3c-3.3 6.5-5.2 13.9-5.2 21.7v96c0 26.5 21.5 48 48 48h96c26.5 0 48-21.5 48-48v-96c0-7.8-1.9-15.2-5.2-21.7L487.1 192h6c9.9 0 17.4-8.9 14.7-18.4c-14.4-51-57.8-124.3-148.9-156.9C393.8 54.8 416 112.1 416 176c0 5.4-.2 10.7-.5 16h28.3L323.7 324.2c-6-2.7-12.7-4.2-19.7-4.2h-32V192z"/>
+    </symbol>
+
+    <!-- Fog of War: Rolling Tactical Fog & Cloud (fa6-solid:smog) -->
+    <symbol id="icon-variant-fog" viewBox="0 0 640 512">
+      <path fill="currentColor" d="M32 144c0 79.5 64.5 144 144 144h123.3c22.6 19.9 52.2 32 84.7 32s62.1-12.1 84.7-32H496c61.9 0 112-50.1 112-112S557.9 64 496 64c-10.7 0-21 1.5-30.8 4.3C443.8 27.7 401.1 0 352 0c-32.6 0-62.4 12.2-85.1 32.3C242.1 12.1 210.5 0 176 0C96.5 0 32 64.5 32 144m584 224H280c-13.3 0-24 10.7-24 24s10.7 24 24 24h336c13.3 0 24-10.7 24-24s-10.7-24-24-24m-64 96H440c-13.3 0-24 10.7-24 24s10.7 24 24 24h112c13.3 0 24-10.7 24-24s-10.7-24-24-24m-192 0H24c-13.3 0-24 10.7-24 24s10.7 24 24 24h336c13.3 0 24-10.7 24-24s-10.7-24-24-24m-136-72c0-13.3-10.7-24-24-24H96c-13.3 0-24 10.7-24 24s10.7 24 24 24h104c13.3 0 24-10.7 24-24"/>
+    </symbol>
+
+    <!-- UI Utility Icons (Lucide ISC) -->
+    <symbol id="icon-flip" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="m2 9 3-3 3 3M13 18H7a2 2 0 0 1-2-2V6m17 9-3 3-3-3M11 6h6a2 2 0 0 1 2 2v10"/>
+    </symbol>
+    <symbol id="icon-share" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/>
+    </symbol>
+  </svg>
+
   <main class="layout">
-    <!-- Left Column: Opponent Bar + Chessboard + Player Bar -->
+    <!-- Mobile Compact Top Header (Shown on Phones/Tablets <= 900px) -->
+    <header class="mobile-topbar" id="mobile-topbar" aria-label="Mobile top bar">
+      <div class="mobile-brand-group">
+        <div class="brand">
+          <span class="brand-board-icon" aria-hidden="true"></span>
+          <span class="brand-title">Chess</span>
+        </div>
+        <button type="button" class="mobile-variant-pill" id="mobile-variant-pill" data-variant="standard" title="Switch or view chess variant">
+          <svg class="variant-glyph" id="mobile-variant-pill-icon" aria-hidden="true">
+            <use id="mobile-variant-pill-use" href="#icon-variant-standard"></use>
+          </svg>
+          <span id="mobile-variant-pill-label">Standard</span>
+        </button>
+      </div>
+
+      <div class="header-tools">
+        <div class="theme-picker" role="group" aria-label="Board theme">
+          <button type="button" class="theme-dot theme-green active" data-theme="green" title="Classic Green"></button>
+          <button type="button" class="theme-dot theme-brown" data-theme="brown" title="Wood Brown"></button>
+          <button type="button" class="theme-dot theme-slate" data-theme="slate" title="Slate Blue"></button>
+        </div>
+        <button type="button" class="icon-btn" id="mobile-sound-btn" title="Toggle sound" aria-label="Toggle sound">
+          <svg id="mobile-sound-on" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+          <svg id="mobile-sound-off" class="hidden" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>
+        </button>
+        <span class="mode-badge" id="mobile-mode-badge">Local</span>
+      </div>
+    </header>
+
+    <!-- Left Column: Opponent Bar + Chessboard + Player Bar (+ Mobile Thumb Dock) -->
     <section class="board-column" aria-label="Chessboard area">
       <div class="player-bar" id="top-player-bar">
         <div class="player-meta">
@@ -66,10 +134,47 @@
           <div class="clock-box hidden" id="bottom-clock">10:00</div>
         </div>
       </div>
+
+      <!-- Mobile Thumb-Zone Status & Quick Controls (Zero Scrolling Needed on Phones!) -->
+      <div class="mobile-action-dock" id="mobile-action-dock">
+        <div class="mobile-status-strip" id="mobile-status-strip">
+          <span class="mobile-status-text" id="mobile-status-text">White to move</span>
+          <button type="button" class="clear-premove-chip hidden" id="mobile-cancel-premove-btn">Clear Premoves</button>
+        </div>
+
+        <div class="mobile-draw-banner hidden" id="mobile-draw-banner">
+          <span>Opponent offers a draw</span>
+          <div class="draw-offer-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="mob-accept-draw-btn">Accept</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="mob-decline-draw-btn">Decline</button>
+          </div>
+        </div>
+
+        <div class="mobile-quick-row">
+          <div class="mobile-step-group" role="group" aria-label="Quick move step">
+            <button type="button" class="mob-tool-btn" id="mob-prev-btn" aria-label="Previous move">&lt;</button>
+            <button type="button" class="mob-tool-btn" id="mob-next-btn" aria-label="Next move">&gt;</button>
+            <button type="button" class="mob-tool-btn" id="mob-flip-btn" aria-label="Flip board" title="Flip Board">
+              <svg width="16" height="16" aria-hidden="true"><use href="#icon-flip"></use></svg>
+            </button>
+          </div>
+
+          <div class="mobile-main-actions" id="mob-local-actions">
+            <button type="button" class="btn btn-secondary btn-mob" id="mob-reset-btn">Reset</button>
+            <button type="button" class="btn btn-primary btn-mob" id="mob-play-friend-btn">Play Friend</button>
+          </div>
+
+          <div class="mobile-main-actions hidden" id="mob-online-actions">
+            <button type="button" class="btn btn-secondary btn-mob" id="mob-draw-btn">Draw</button>
+            <button type="button" class="btn btn-secondary btn-mob" id="mob-resign-btn">Resign</button>
+            <button type="button" class="btn btn-primary btn-mob" id="mob-rematch-btn" disabled>Rematch</button>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <!-- Right Column: Game Setup, Clocks, Status, Replayable Move History & Actions -->
-    <aside class="sidebar" aria-label="Game controls and move history">
+    <!-- Right Column: Game Setup, Variants, Clocks, Status, Replayable Move History & Actions -->
+    <aside class="sidebar" id="sidebar" data-mobile-tab="play" aria-label="Game controls and move history">
       <header class="sidebar-header">
         <div class="brand">
           <span class="brand-board-icon" aria-hidden="true"></span>
@@ -97,8 +202,15 @@
         </div>
       </header>
 
+      <!-- Mobile Segmented Navigation (Play Online | Variants | Moves) -->
+      <nav class="mobile-tabs" id="mobile-tabs" aria-label="Mobile sections">
+        <button type="button" class="mobile-tab-btn active" data-tab="play">Play Online</button>
+        <button type="button" class="mobile-tab-btn" data-tab="variants">Variants</button>
+        <button type="button" class="mobile-tab-btn" data-tab="moves">Moves</button>
+      </nav>
+
       <!-- Game Room & Match Settings Box -->
-      <section class="game-box">
+      <section class="game-box" id="game-box">
         <!-- Temporary Display Name Bar -->
         <div class="name-row" id="name-row">
           <label class="name-label" for="player-name-input">Name</label>
@@ -116,25 +228,28 @@
 
         <!-- View 1: Idle (Create Game or Join Game) -->
         <div id="game-idle">
-          <button type="button" class="btn btn-primary btn-block" id="open-setup-btn">
-            Create Game
+          <button type="button" class="btn btn-primary btn-block btn-lg-touch" id="open-setup-btn">
+            Create Online Game
           </button>
-          <div class="divider"><span>or join with code</span></div>
+          <div class="divider"><span>or join friend's code</span></div>
           <form class="join-row" id="join-game-form" autocomplete="off">
-            <input
-              type="text"
-              class="code-input"
-              id="join-code-input"
-              placeholder="K7M4P"
-              aria-label="5-character game code"
-              spellcheck="false"
-              autocapitalize="characters"
-            >
-            <button type="submit" class="btn btn-secondary" id="join-game-btn">Join Game</button>
+            <div class="code-input-wrap">
+              <input
+                type="text"
+                class="code-input"
+                id="join-code-input"
+                placeholder="K7M4P"
+                aria-label="5-character game code"
+                spellcheck="false"
+                autocapitalize="characters"
+              >
+              <button type="button" class="paste-chip-btn" id="paste-code-btn" title="Paste code or invite link">Paste</button>
+            </div>
+            <button type="submit" class="btn btn-secondary" id="join-game-btn">Join</button>
           </form>
         </div>
 
-        <!-- View 2: Match Setup (Variant, Time Control & Side Selection before creating code) -->
+        <!-- View 2: Match Setup (Variant Cards, Time Control & Side Selection) -->
         <div id="game-setup" class="hidden">
           <div class="setup-top-row">
             <span class="setup-heading">Match Settings</span>
@@ -142,10 +257,45 @@
           </div>
 
           <div class="variant-grid" id="setup-variant-grid" role="group" aria-label="Chess variant">
-            <button type="button" class="variant-btn active" data-variant="standard">Standard</button>
-            <button type="button" class="variant-btn" data-variant="cannibal">Cannibal Chess</button>
-            <button type="button" class="variant-btn" data-variant="crazyhouse">Crazyhouse</button>
-            <button type="button" class="variant-btn" data-variant="fog">Fog of War</button>
+            <button type="button" class="variant-btn active" data-variant="standard">
+              <span class="variant-icon-badge" data-variant="standard" aria-hidden="true">
+                <svg class="variant-glyph"><use href="#icon-variant-standard"></use></svg>
+              </span>
+              <span class="variant-card-copy">
+                <span class="variant-card-title">Standard</span>
+                <span class="variant-card-sub">Classic rules</span>
+              </span>
+            </button>
+
+            <button type="button" class="variant-btn" data-variant="cannibal">
+              <span class="variant-icon-badge" data-variant="cannibal" aria-hidden="true">
+                <svg class="variant-glyph"><use href="#icon-variant-cannibal"></use></svg>
+              </span>
+              <span class="variant-card-copy">
+                <span class="variant-card-title">Cannibal</span>
+                <span class="variant-card-sub">Eat own pieces</span>
+              </span>
+            </button>
+
+            <button type="button" class="variant-btn" data-variant="crazyhouse">
+              <span class="variant-icon-badge" data-variant="crazyhouse" aria-hidden="true">
+                <svg class="variant-glyph"><use href="#icon-variant-crazyhouse"></use></svg>
+              </span>
+              <span class="variant-card-copy">
+                <span class="variant-card-title">Crazyhouse</span>
+                <span class="variant-card-sub">Pocket drops</span>
+              </span>
+            </button>
+
+            <button type="button" class="variant-btn" data-variant="fog">
+              <span class="variant-icon-badge" data-variant="fog" aria-hidden="true">
+                <svg class="variant-glyph"><use href="#icon-variant-fog"></use></svg>
+              </span>
+              <span class="variant-card-copy">
+                <span class="variant-card-title">Fog of War</span>
+                <span class="variant-card-sub">Hidden board</span>
+              </span>
+            </button>
           </div>
           <p class="variant-desc" id="setup-variant-desc">Classic chess rules.</p>
 
@@ -185,7 +335,7 @@
             </div>
           </div>
 
-          <button type="button" class="btn btn-primary btn-block" id="create-game-btn">
+          <button type="button" class="btn btn-primary btn-block btn-lg-touch" id="create-game-btn">
             Start &amp; Get Code
           </button>
         </div>
@@ -197,9 +347,15 @@
             <div class="code-display" id="game-code-display">-----</div>
             <button type="button" class="btn btn-secondary btn-sm" id="copy-code-btn">Copy</button>
           </div>
-          <button type="button" class="btn btn-primary btn-block" id="copy-link-btn">
-            Copy Invite Link
-          </button>
+          <div class="invite-actions-row">
+            <button type="button" class="btn btn-primary btn-share hidden" id="share-link-btn">
+              <svg width="15" height="15" aria-hidden="true"><use href="#icon-share"></use></svg>
+              <span>Share Invite</span>
+            </button>
+            <button type="button" class="btn btn-primary btn-block" id="copy-link-btn">
+              Copy Invite Link
+            </button>
+          </div>
           <button type="button" class="btn btn-subtle btn-block" id="cancel-game-btn">
             Cancel Game
           </button>
@@ -211,7 +367,7 @@
             <div class="connected-info">
               <span class="status-dot"></span>
               <span>Game <strong id="active-game-code">-----</strong></span>
-              <span class="locked-tag variant-tag hidden" id="active-variant-tag">Standard</span>
+              <span class="locked-tag variant-tag" id="active-variant-tag" data-variant="standard">Standard</span>
               <span class="locked-tag" id="active-time-tag">10+5</span>
             </div>
             <button type="button" class="btn btn-subtle btn-sm" id="leave-game-btn">Leave</button>
@@ -221,8 +377,62 @@
         <p class="game-feedback hidden" id="game-feedback" role="status"></p>
       </section>
 
-      <!-- Game Turn / Result Banner -->
+      <!-- Mobile Variants Picker Section (Visible on Mobile "Variants" Tab) -->
+      <section class="mobile-variants-section" id="mobile-variant-panel" aria-label="Choose chess variant">
+        <div class="mobile-variants-head">
+          <span class="setup-heading">Select Variant</span>
+          <span class="mobile-variants-hint" id="mobile-variants-hint">Tap to switch local board</span>
+        </div>
+        <div class="variant-grid variant-grid-large" id="mobile-variant-grid" role="group" aria-label="Chess variants">
+          <button type="button" class="variant-btn active" data-variant="standard">
+            <span class="variant-icon-badge" data-variant="standard" aria-hidden="true">
+              <svg class="variant-glyph"><use href="#icon-variant-standard"></use></svg>
+            </span>
+            <span class="variant-card-copy">
+              <span class="variant-card-title">Standard</span>
+              <span class="variant-card-sub">Classic chess rules</span>
+            </span>
+          </button>
+
+          <button type="button" class="variant-btn" data-variant="cannibal">
+            <span class="variant-icon-badge" data-variant="cannibal" aria-hidden="true">
+              <svg class="variant-glyph"><use href="#icon-variant-cannibal"></use></svg>
+            </span>
+            <span class="variant-card-copy">
+              <span class="variant-card-title">Cannibal Chess</span>
+              <span class="variant-card-sub">Capture own non-King pieces</span>
+            </span>
+          </button>
+
+          <button type="button" class="variant-btn" data-variant="crazyhouse">
+            <span class="variant-icon-badge" data-variant="crazyhouse" aria-hidden="true">
+              <svg class="variant-glyph"><use href="#icon-variant-crazyhouse"></use></svg>
+            </span>
+            <span class="variant-card-copy">
+              <span class="variant-card-title">Crazyhouse</span>
+              <span class="variant-card-sub">Drop captured enemy pieces</span>
+            </span>
+          </button>
+
+          <button type="button" class="variant-btn" data-variant="fog">
+            <span class="variant-icon-badge" data-variant="fog" aria-hidden="true">
+              <svg class="variant-glyph"><use href="#icon-variant-fog"></use></svg>
+            </span>
+            <span class="variant-card-copy">
+              <span class="variant-card-title">Fog of War</span>
+              <span class="variant-card-sub">Hidden enemy — capture King</span>
+            </span>
+          </button>
+        </div>
+        <p class="variant-desc mobile-variant-full-desc" id="mobile-variant-desc">Classic chess rules.</p>
+      </section>
+
+      <!-- Game Turn / Result Banner (Desktop Sidebar) -->
       <div class="status-banner" id="status-banner" role="status">White to move</div>
+      <div class="premove-cancel-bar hidden" id="premove-cancel-bar">
+        <span id="premove-count-label">1 premove queued</span>
+        <button type="button" class="clear-premove-chip" id="cancel-premove-btn">Cancel</button>
+      </div>
 
       <!-- Incoming Draw Offer Prompt -->
       <div class="draw-offer-banner hidden" id="draw-offer-banner">
@@ -234,7 +444,7 @@
       </div>
 
       <!-- Algebraic Move History + Replay Navigation -->
-      <div class="moves-section">
+      <div class="moves-section" id="moves-section">
         <div class="moves-header">
           <span>Moves</span>
           <button type="button" class="pgn-btn" id="copy-pgn-btn" title="Copy moves as PGN">Copy PGN</button>
@@ -249,12 +459,24 @@
       </div>
 
       <!-- Footer Action Buttons -->
-      <footer class="controls-footer">
+      <footer class="controls-footer" id="controls-footer">
         <div class="local-variant-bar" id="local-variant-bar" role="group" aria-label="Local board variant">
-          <button type="button" class="local-variant-btn active" data-variant="standard" title="Classic chess rules">Standard</button>
-          <button type="button" class="local-variant-btn" data-variant="cannibal" title="Capture your own non-King pieces too">Cannibal</button>
-          <button type="button" class="local-variant-btn" data-variant="crazyhouse" title="Drop captured opponent pieces from your pocket">Crazyhouse</button>
-          <button type="button" class="local-variant-btn" data-variant="fog" title="Only see your pieces and legal moves — capture the King to win">Fog of War</button>
+          <button type="button" class="local-variant-btn active" data-variant="standard" title="Classic chess rules">
+            <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-standard"></use></svg>
+            <span>Standard</span>
+          </button>
+          <button type="button" class="local-variant-btn" data-variant="cannibal" title="Capture your own non-King pieces too">
+            <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-cannibal"></use></svg>
+            <span>Cannibal</span>
+          </button>
+          <button type="button" class="local-variant-btn" data-variant="crazyhouse" title="Drop captured opponent pieces from your pocket">
+            <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-crazyhouse"></use></svg>
+            <span>Crazyhouse</span>
+          </button>
+          <button type="button" class="local-variant-btn" data-variant="fog" title="Only see your pieces and legal moves — capture the King to win">
+            <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-fog"></use></svg>
+            <span>Fog</span>
+          </button>
         </div>
         <div class="controls-row" id="local-controls">
           <button type="button" class="btn btn-secondary" id="reset-local-btn">Reset Board</button>
