@@ -31,6 +31,11 @@
       <path fill="currentColor" d="M32 144c0 79.5 64.5 144 144 144h123.3c22.6 19.9 52.2 32 84.7 32s62.1-12.1 84.7-32H496c61.9 0 112-50.1 112-112S557.9 64 496 64c-10.7 0-21 1.5-30.8 4.3C443.8 27.7 401.1 0 352 0c-32.6 0-62.4 12.2-85.1 32.3C242.1 12.1 210.5 0 176 0C96.5 0 32 64.5 32 144m584 224H280c-13.3 0-24 10.7-24 24s10.7 24 24 24h336c13.3 0 24-10.7 24-24s-10.7-24-24-24m-64 96H440c-13.3 0-24 10.7-24 24s10.7 24 24 24h112c13.3 0 24-10.7 24-24s-10.7-24-24-24m-192 0H24c-13.3 0-24 10.7-24 24s10.7 24 24 24h336c13.3 0 24-10.7 24-24s-10.7-24-24-24m-136-72c0-13.3-10.7-24-24-24H96c-13.3 0-24 10.7-24 24s10.7 24 24 24h104c13.3 0 24-10.7 24-24"/>
     </symbol>
 
+    <!-- Secret Queen Chess: Masquerade Domino Mask (game-icons:domino-mask CC-BY-3.0) -->
+    <symbol id="icon-variant-secret" viewBox="0 0 512 512">
+      <path fill="currentColor" d="M413.28 123.063C366.787 123.317 306.08 143 255.845 143c-56.868 0-124.174-23.704-171-19.156c-23.414 2.274-40.642 10.16-52.28 30.937c-11.64 20.78-17.23 56.337-10.97 113.19c8.578 77.917 73.225 118.973 128.656 99.405c11.513-4.064 30.972-25.256 49-46.125c9.014-10.434 17.993-20.687 27.03-28.72c9.04-8.03 18.23-14.624 29.564-14.624c11.335 0 20.493 6.594 29.53 14.625c9.04 8.033 18.018 18.286 27.032 28.72c18.028 20.87 37.487 42.06 49 46.125c55.45 19.574 118.93-21.672 128.688-99.563c7.137-56.986 1.753-92.528-9.938-113.28c-11.69-20.754-29.346-28.665-53.22-30.907c-2.983-.28-6.05-.46-9.186-.53c-1.47-.035-2.97-.04-4.47-.032zM135.064 181.72c22.378-.2 44.746 10.556 67.125 30.78c-43.4 54.67-108.488 37.044-130.188 0c21.022-20.738 42.04-30.594 63.063-30.78m234.625 0c.7-.016 1.394-.007 2.093 0c21.023.186 42.073 10.042 63.095 30.78c-21.7 37.044-86.82 54.67-130.22 0c21.68-19.592 43.354-30.312 65.033-30.78z"/>
+    </symbol>
+
     <!-- UI Utility Icons (Lucide ISC) -->
     <symbol id="icon-flip" viewBox="0 0 24 24">
       <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="m2 9 3-3 3 3M13 18H7a2 2 0 0 1-2-2V6m17 9-3 3-3-3M11 6h6a2 2 0 0 1 2 2v10"/>
@@ -113,6 +118,15 @@
         <!-- Pawn Promotion Chooser -->
         <div class="promotion-backdrop hidden" id="promotion-backdrop">
           <div class="promotion-menu" id="promotion-menu" role="dialog" aria-label="Choose promotion piece"></div>
+        </div>
+      </div>
+
+      <!-- Secret Queen Match Setup Bar -->
+      <div class="secret-pick-bar hidden" id="secret-pick-bar">
+        <span class="secret-pick-text" id="secret-pick-text">Choose your Secret Queen: tap any pawn</span>
+        <div class="secret-pick-actions">
+          <button type="button" class="btn btn-secondary btn-sm" id="secret-random-btn">Random</button>
+          <button type="button" class="btn btn-primary btn-sm" id="secret-confirm-btn" disabled>Confirm</button>
         </div>
       </div>
 
@@ -296,6 +310,16 @@
                 <span class="variant-card-sub">Hidden board</span>
               </span>
             </button>
+
+            <button type="button" class="variant-btn" data-variant="secret">
+              <span class="variant-icon-badge" data-variant="secret" aria-hidden="true">
+                <svg class="variant-glyph"><use href="#icon-variant-secret"></use></svg>
+              </span>
+              <span class="variant-card-copy">
+                <span class="variant-card-title">Secret Queen</span>
+                <span class="variant-card-sub">Hidden Queen pawn</span>
+              </span>
+            </button>
           </div>
           <p class="variant-desc" id="setup-variant-desc">Classic chess rules.</p>
 
@@ -423,6 +447,16 @@
               <span class="variant-card-sub">Hidden enemy — capture King</span>
             </span>
           </button>
+
+          <button type="button" class="variant-btn" data-variant="secret">
+            <span class="variant-icon-badge" data-variant="secret" aria-hidden="true">
+              <svg class="variant-glyph"><use href="#icon-variant-secret"></use></svg>
+            </span>
+            <span class="variant-card-copy">
+              <span class="variant-card-title">Secret Queen</span>
+              <span class="variant-card-sub">Hidden Queen pawn</span>
+            </span>
+          </button>
         </div>
         <p class="variant-desc mobile-variant-full-desc" id="mobile-variant-desc">Classic chess rules.</p>
       </section>
@@ -476,6 +510,10 @@
           <button type="button" class="local-variant-btn" data-variant="fog" title="Only see your pieces and legal moves — capture the King to win">
             <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-fog"></use></svg>
             <span>Fog</span>
+          </button>
+          <button type="button" class="local-variant-btn" data-variant="secret" title="Designate a secret Queen disguised as a pawn until revealed">
+            <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-secret"></use></svg>
+            <span>Secret</span>
           </button>
         </div>
         <div class="controls-row" id="local-controls">

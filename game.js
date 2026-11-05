@@ -79,6 +79,16 @@ const VARIANT_DEFS = {
     allowDrops: false,
     fogOfWar: true,
     royalCaptureWins: true
+  },
+  secret: {
+    name: 'Secret Queen Chess',
+    shortName: 'Secret Queen',
+    description: 'Each player secretly designates a pawn as a Queen. Revealed on non-pawn moves, pins, or checks.',
+    allowSelfCapture: false,
+    allowDrops: false,
+    fogOfWar: false,
+    royalCaptureWins: false,
+    secretQueen: true
   }
 };
 
@@ -379,11 +389,29 @@ function makeHistoryFrame(state, meta = null) {
       w: (state.pockets?.w || []).slice(),
       b: (state.pockets?.b || []).slice()
     },
+    secretQueens: state.secretQueens
+      ? {
+          w: state.secretQueens.w
+            ? {
+                sq: state.secretQueens.w.sq ? { ...state.secretQueens.w.sq } : null,
+                revealed: Boolean(state.secretQueens.w.revealed),
+                picked: Boolean(state.secretQueens.w.picked)
+              }
+            : null,
+          b: state.secretQueens.b
+            ? {
+                sq: state.secretQueens.b.sq ? { ...state.secretQueens.b.sq } : null,
+                revealed: Boolean(state.secretQueens.b.revealed),
+                picked: Boolean(state.secretQueens.b.picked)
+              }
+            : null
+        }
+      : null,
     meta: meta ? { ...meta } : null
   };
 }
 
-function createInitialState(variant = 'standard') {
+function createInitialState(variant = 'standard', options = {}) {
   const cleanVariant = Object.prototype.hasOwnProperty.call(VARIANT_DEFS, variant)
     ? variant
     : 'standard';
@@ -400,7 +428,7 @@ function createInitialState(variant = 'standard') {
     enPassant: null,
     halfMoveClock: 0,
     fullMoveNumber: 1,
-    status: 'playing', // 'playing' | 'checkmate' | 'king_captured' | 'stalemate' | 'draw_50' | 'draw_repetition' | 'draw_material' | 'draw_agreement' | 'resigned' | 'timeout'
+    status: cleanVariant === 'secret' && !options.ready ? 'secret_pick' : 'playing',
     winner: null,
     inCheck: false,
     lastMove: null,
@@ -412,7 +440,22 @@ function createInitialState(variant = 'standard') {
     historyFrames: [],
     fogMasked: false,
     fogVisible: null,
-    fogLegalMoves: null
+    fogLegalMoves: null,
+    secretQueens:
+      cleanVariant === 'secret'
+        ? {
+            w: {
+              sq: options.whiteCol !== undefined ? { r: 6, c: options.whiteCol } : null,
+              revealed: false,
+              picked: options.whiteCol !== undefined || Boolean(options.ready)
+            },
+            b: {
+              sq: options.blackCol !== undefined ? { r: 1, c: options.blackCol } : null,
+              revealed: false,
+              picked: options.blackCol !== undefined || Boolean(options.ready)
+            }
+          }
+        : null
   };
   const key = computePositionKey(state);
   state.positionCounts[key] = 1;
@@ -451,11 +494,47 @@ function cloneState(state) {
         w: (f.pockets?.w || []).slice(),
         b: (f.pockets?.b || []).slice()
       },
+      secretQueens: f.secretQueens
+        ? {
+            w: f.secretQueens.w
+              ? {
+                  sq: f.secretQueens.w.sq ? { ...f.secretQueens.w.sq } : null,
+                  revealed: Boolean(f.secretQueens.w.revealed),
+                  picked: Boolean(f.secretQueens.w.picked)
+                }
+              : null,
+            b: f.secretQueens.b
+              ? {
+                  sq: f.secretQueens.b.sq ? { ...f.secretQueens.b.sq } : null,
+                  revealed: Boolean(f.secretQueens.b.revealed),
+                  picked: Boolean(f.secretQueens.b.picked)
+                }
+              : null
+          }
+        : null,
       meta: f.meta ? { ...f.meta } : null
     })),
     fogMasked: Boolean(state.fogMasked),
     fogVisible: Array.isArray(state.fogVisible) ? state.fogVisible.slice() : null,
-    fogLegalMoves: Array.isArray(state.fogLegalMoves) ? state.fogLegalMoves.slice() : null
+    fogLegalMoves: Array.isArray(state.fogLegalMoves) ? state.fogLegalMoves.slice() : null,
+    secretQueens: state.secretQueens
+      ? {
+          w: state.secretQueens.w
+            ? {
+                sq: state.secretQueens.w.sq ? { ...state.secretQueens.w.sq } : null,
+                revealed: Boolean(state.secretQueens.w.revealed),
+                picked: Boolean(state.secretQueens.w.picked)
+              }
+            : null,
+          b: state.secretQueens.b
+            ? {
+                sq: state.secretQueens.b.sq ? { ...state.secretQueens.b.sq } : null,
+                revealed: Boolean(state.secretQueens.b.revealed),
+                picked: Boolean(state.secretQueens.b.picked)
+              }
+            : null
+        }
+      : null
   };
 }
 
@@ -488,6 +567,17 @@ function computePositionKey(state) {
     const pr = (state.promoted || []).slice().sort().join(';');
     extra = ` [${pw}|${pb}|${pr}]`;
   }
+  if (vDef.secretQueen && state.secretQueens) {
+    const sw = state.secretQueens.w;
+    const sb = state.secretQueens.b;
+    const wStr = sw
+      ? `${sw.sq ? sw.sq.r + ',' + sw.sq.c : 'none'}:${sw.revealed ? 'rev' : 'hid'}`
+      : '-';
+    const bStr = sb
+      ? `${sb.sq ? sb.sq.r + ',' + sb.sq.c : 'none'}:${sb.revealed ? 'rev' : 'hid'}`
+      : '-';
+    extra += ` [SQ:${wStr}|${bStr}]`;
+  }
 
   return `${state.variant || 'standard'} ${rows} ${state.turn} ${cr} ${ep}${extra}`;
 }
@@ -513,6 +603,63 @@ function generatePseudoMoves(state, r, c, attacksOnly = false) {
 
   const vDef = getVariantDef(state);
   const moves = [];
+
+  const isSecretQueen = Boolean(
+    vDef.secretQueen &&
+    state.secretQueens &&
+    state.secretQueens[color]?.sq &&
+    state.secretQueens[color].sq.r === r &&
+    state.secretQueens[color].sq.c === c &&
+    !state.secretQueens[color].revealed
+  );
+
+  if (isSecretQueen) {
+    const qDef = PIECE_DEFS.q;
+    for (const [dr, dc] of qDef.slideDirs) {
+      let tr = r + dr;
+      let tc = c + dc;
+      while (inBounds(tr, tc)) {
+        const occupant = state.board[tr][tc];
+        if (!occupant) {
+          const move = { from: { r, c }, to: { r: tr, c: tc }, captureSq: null, promotion: null };
+          const pawnStart = color === 'w' ? 6 : 1;
+          const pawnDir = color === 'w' ? -1 : 1;
+          if (r === pawnStart && tr === r + 2 * pawnDir && tc === c) {
+            move.enPassantTarget = { r: r + pawnDir, c };
+          }
+          moves.push(move);
+        } else {
+          const canCap = attacksOnly
+            ? getPieceColor(occupant) !== color
+            : canCaptureOccupant(occupant, color, state);
+          if (canCap) {
+            moves.push({ from: { r, c }, to: { r: tr, c: tc }, captureSq: { r: tr, c: tc }, promotion: null });
+          }
+          break;
+        }
+        tr += dr;
+        tc += dc;
+      }
+    }
+    if (!attacksOnly && state.enPassant) {
+      const pawnDir = color === 'w' ? -1 : 1;
+      if (state.enPassant.r === r + pawnDir && Math.abs(state.enPassant.c - c) === 1) {
+        const victimR = r;
+        const victimC = state.enPassant.c;
+        const victim = state.board[victimR]?.[victimC];
+        if (victim && getPieceColor(victim) !== color && getPieceType(victim) === 'p') {
+          moves.push({
+            from: { r, c },
+            to: { r: state.enPassant.r, c: state.enPassant.c },
+            captureSq: { r: victimR, c: victimC },
+            promotion: null,
+            isEnPassant: true
+          });
+        }
+      }
+    }
+    return moves;
+  }
 
   if (def.leapOffsets) {
     for (const [dr, dc] of def.leapOffsets) {
@@ -685,6 +832,170 @@ function isInCheck(state, color) {
   return false;
 }
 
+function createProbeState(state, nextBoard, move) {
+  const probe = {
+    variant: state.variant || 'standard',
+    board: nextBoard,
+    castling: state.castling,
+    enPassant: null,
+    secretQueens: null
+  };
+  if (state.secretQueens) {
+    probe.secretQueens = {
+      w: state.secretQueens.w
+        ? {
+            sq: state.secretQueens.w.sq ? { ...state.secretQueens.w.sq } : null,
+            revealed: Boolean(state.secretQueens.w.revealed),
+            picked: Boolean(state.secretQueens.w.picked)
+          }
+        : null,
+      b: state.secretQueens.b
+        ? {
+            sq: state.secretQueens.b.sq ? { ...state.secretQueens.b.sq } : null,
+            revealed: Boolean(state.secretQueens.b.revealed),
+            picked: Boolean(state.secretQueens.b.picked)
+          }
+        : null
+    };
+    if (move && !move.isDrop && move.from && move.to) {
+      const mover = getPieceColor(state.board[move.from.r]?.[move.from.c]);
+      if (mover && probe.secretQueens[mover]?.sq) {
+        if (
+          probe.secretQueens[mover].sq.r === move.from.r &&
+          probe.secretQueens[mover].sq.c === move.from.c
+        ) {
+          probe.secretQueens[mover].sq = { r: move.to.r, c: move.to.c };
+        }
+      }
+      if (move.captureSq) {
+        const enemy = mover === 'w' ? 'b' : 'w';
+        if (
+          probe.secretQueens[enemy]?.sq &&
+          probe.secretQueens[enemy].sq.r === move.captureSq.r &&
+          probe.secretQueens[enemy].sq.c === move.captureSq.c
+        ) {
+          probe.secretQueens[enemy].sq = null;
+        }
+      }
+    }
+  }
+  return probe;
+}
+
+function isStandardPawnMove(state, from, to, captureSq) {
+  if (!from || !to) return false;
+  const code = state.board[from.r]?.[from.c];
+  if (!code) return false;
+  const color = getPieceColor(code);
+  const dir = color === 'w' ? -1 : 1;
+  const startRow = color === 'w' ? 6 : 1;
+  const dr = to.r - from.r;
+  const dc = to.c - from.c;
+
+  // 1-step forward push to empty square
+  if (dr === dir && dc === 0 && !captureSq && state.board[to.r][to.c] === null) {
+    return true;
+  }
+
+  // 2-step forward push from starting rank through empty square
+  if (
+    from.r === startRow &&
+    dr === 2 * dir &&
+    dc === 0 &&
+    !captureSq &&
+    state.board[from.r + dir][from.c] === null &&
+    state.board[to.r][to.c] === null
+  ) {
+    return true;
+  }
+
+  // 1-step forward diagonal capture
+  if (dr === dir && Math.abs(dc) === 1 && captureSq !== null) {
+    return true;
+  }
+
+  return false;
+}
+
+function revealSecretQueen(state, color) {
+  if (!state.secretQueens || !state.secretQueens[color]) return;
+  state.secretQueens[color].revealed = true;
+  const sq = state.secretQueens[color].sq;
+  if (sq && inBounds(sq.r, sq.c)) {
+    const cur = state.board[sq.r][sq.c];
+    if (cur && getPieceColor(cur) === color) {
+      state.board[sq.r][sq.c] = color + 'q';
+    }
+  }
+}
+
+function assignSecretQueen(state, color, col) {
+  if (!state.secretQueens) return;
+  const r = color === 'w' ? 6 : 1;
+  const c = Math.max(0, Math.min(7, col));
+  state.secretQueens[color] = {
+    sq: { r, c },
+    revealed: false,
+    picked: true
+  };
+}
+
+function checkSecretQueenPinInteraction(state, from, to) {
+  if (!state || !from || !to || !inBounds(from.r, from.c) || !inBounds(to.r, to.c)) return null;
+  const vDef = getVariantDef(state);
+  if (!vDef.secretQueen || !state.secretQueens) return null;
+
+  const moverPiece = state.board[from.r]?.[from.c];
+  if (!moverPiece) return null;
+  const moverColor = getPieceColor(moverPiece);
+  const enemyColor = moverColor === 'w' ? 'b' : 'w';
+
+  const enemySQ = state.secretQueens[enemyColor];
+  if (!enemySQ || !enemySQ.sq || enemySQ.revealed) return null;
+
+  // Build hypothetical state where enemy secret queen is strictly a normal pawn
+  const hypoState = cloneState(state);
+  hypoState.secretQueens = null;
+
+  const hypoPseudos = generatePseudoMoves(hypoState, from.r, from.c, false);
+  const hypoMatching = hypoPseudos.filter((m) => m.to.r === to.r && m.to.c === to.c);
+  if (hypoMatching.length === 0) return null;
+
+  const hypoNextBoard = executeMoveOnBoard(hypoState, hypoMatching[0]);
+  const hypoProbe = {
+    variant: 'standard',
+    board: hypoNextBoard,
+    castling: hypoState.castling,
+    enPassant: null
+  };
+  if (isInCheck(hypoProbe, moverColor)) {
+    return null;
+  }
+
+  // In the real state, does any move to (to.r, to.c) leave King safe?
+  const realPseudos = generatePseudoMoves(state, from.r, from.c, false);
+  const realMatching = realPseudos.filter((m) => m.to.r === to.r && m.to.c === to.c);
+  let realLegal = false;
+  for (const rm of realMatching) {
+    const realNextBoard = executeMoveOnBoard(state, rm);
+    const realProbe = createProbeState(state, realNextBoard, rm);
+    if (!isInCheck(realProbe, moverColor)) {
+      realLegal = true;
+      break;
+    }
+  }
+
+  if (!realLegal) {
+    return {
+      triggered: true,
+      secretColor: enemyColor,
+      sq: { ...enemySQ.sq }
+    };
+  }
+
+  return null;
+}
+
 function executeMoveOnBoard(state, move, moverColorOverride = null) {
   const nextBoard = cloneBoard(state.board);
 
@@ -734,12 +1045,7 @@ function getLegalMovesForSquare(state, r, c) {
 
   for (const move of pseudo) {
     const nextBoard = executeMoveOnBoard(state, move);
-    const probeState = {
-      variant: state.variant || 'standard',
-      board: nextBoard,
-      castling: state.castling,
-      enPassant: null
-    };
+    const probeState = createProbeState(state, nextBoard, move);
 
     const def = PIECE_DEFS[getPieceType(code)];
     if (def && typeof def.afterMove === 'function') {
@@ -783,12 +1089,7 @@ function getLegalDropMoves(state, dropType, color = state.turn) {
       };
       if (!vDef.royalCaptureWins) {
         const nextBoard = executeMoveOnBoard(state, move, color);
-        const probeState = {
-          variant: state.variant || 'standard',
-          board: nextBoard,
-          castling: state.castling,
-          enPassant: null
-        };
+        const probeState = createProbeState(state, nextBoard, move);
         const def = PIECE_DEFS[dropType];
         if (def && typeof def.afterMove === 'function') {
           def.afterMove(probeState, move);
@@ -941,7 +1242,15 @@ function formatMoveSAN(prevState, move, nextState) {
   }
 
   const movingCode = prevState.board[move.from.r][move.from.c];
-  const type = getPieceType(movingCode);
+  let type = getPieceType(movingCode);
+  const moverColor = getPieceColor(movingCode);
+  if (
+    type === 'p' &&
+    nextState.secretQueens?.[moverColor]?.revealed &&
+    !prevState.secretQueens?.[moverColor]?.revealed
+  ) {
+    type = 'q';
+  }
   const def = PIECE_DEFS[type];
   const isCapture = Boolean(move.captureSq);
   const dest = coordToAlgebraic(move.to.r, move.to.c);
@@ -959,10 +1268,11 @@ function formatMoveSAN(prevState, move, nextState) {
     const symbol = def.symbol || type.toUpperCase();
     san += symbol;
 
+    const targetCode = moverColor + type;
     const peers = [];
     for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
-        if ((r !== move.from.r || c !== move.from.c) && prevState.board[r][c] === movingCode) {
+        if ((r !== move.from.r || c !== move.from.c) && prevState.board[r][c] === targetCode) {
           const peerMoves = getLegalMovesForSquare(prevState, r, c);
           if (peerMoves.some((pm) => pm.to.r === move.to.r && pm.to.c === move.to.c)) {
             peers.push({ r, c });
@@ -1038,6 +1348,15 @@ function applyMove(state, move) {
     moverColor = getPieceColor(movingCode);
     moverType = getPieceType(movingCode);
 
+    const isSQMove = Boolean(
+      vDef.secretQueen &&
+      next.secretQueens &&
+      !move.isDrop &&
+      next.secretQueens[moverColor]?.sq &&
+      next.secretQueens[moverColor].sq.r === move.from.r &&
+      next.secretQueens[moverColor].sq.c === move.from.c
+    );
+
     const fromKey = `${move.from.r},${move.from.c}`;
     const toKey = `${move.to.r},${move.to.c}`;
     const moverWasPromoted = promoSet.has(fromKey) || Boolean(move.promotion);
@@ -1052,6 +1371,17 @@ function applyMove(state, move) {
       if (capCode) {
         const capColor = getPieceColor(capCode);
         capturedType = getPieceType(capCode);
+        if (
+          vDef.secretQueen &&
+          next.secretQueens &&
+          next.secretQueens[capColor]?.sq &&
+          next.secretQueens[capColor].sq.r === move.captureSq.r &&
+          next.secretQueens[capColor].sq.c === move.captureSq.c
+        ) {
+          next.secretQueens[capColor].sq = null;
+          next.secretQueens[capColor].revealed = true;
+          capturedType = 'q';
+        }
         const trayOwner = capColor === 'w' ? 'b' : 'w';
         next.captured[trayOwner].push(capturedType);
 
@@ -1079,7 +1409,22 @@ function applyMove(state, move) {
       next.board[move.rookMove.to.r][move.rookMove.to.c] = rookCode;
     }
 
-    const finalType = move.promotion || moverType;
+    let finalType = move.promotion || moverType;
+    if (isSQMove) {
+      if (!next.secretQueens[moverColor].revealed) {
+        const isStd = isStandardPawnMove(state, move.from, move.to, move.captureSq);
+        const reachedEnd = move.to.r === (moverColor === 'w' ? 0 : 7);
+        if (!isStd || reachedEnd) {
+          next.secretQueens[moverColor].revealed = true;
+          finalType = 'q';
+        } else {
+          finalType = 'p';
+        }
+      } else {
+        finalType = 'q';
+      }
+      next.secretQueens[moverColor].sq = { r: move.to.r, c: move.to.c };
+    }
     next.board[move.to.r][move.to.c] = moverColor + finalType;
     if (moverWasPromoted) {
       promoSet.add(toKey);
@@ -1170,6 +1515,50 @@ function applyMove(state, move) {
       next.status = 'draw_material';
     }
   } else {
+    // Check if mover's secret queen has unobstructed Queen line of sight to enemy King (delivering check)
+    if (
+      vDef.secretQueen &&
+      next.secretQueens &&
+      next.secretQueens[moverColor]?.sq &&
+      !next.secretQueens[moverColor].revealed
+    ) {
+      const sq = next.secretQueens[moverColor].sq;
+      let enemyKr = -1, enemyKc = -1;
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (next.board[r][c] === enemyColor + 'k') {
+            enemyKr = r;
+            enemyKc = c;
+            break;
+          }
+        }
+        if (enemyKr >= 0) break;
+      }
+      if (enemyKr >= 0) {
+        const dr = enemyKr - sq.r;
+        const dc = enemyKc - sq.c;
+        const isAligned = dr === 0 || dc === 0 || Math.abs(dr) === Math.abs(dc);
+        if (isAligned) {
+          const stepR = Math.sign(dr);
+          const stepC = Math.sign(dc);
+          let cr = sq.r + stepR;
+          let cc = sq.c + stepC;
+          let clear = true;
+          while (cr !== enemyKr || cc !== enemyKc) {
+            if (next.board[cr][cc] !== null) {
+              clear = false;
+              break;
+            }
+            cr += stepR;
+            cc += stepC;
+          }
+          if (clear) {
+            revealSecretQueen(next, moverColor);
+          }
+        }
+      }
+    }
+
     const posKey = computePositionKey(next);
     next.positionCounts[posKey] = (next.positionCounts[posKey] || 0) + 1;
 
@@ -1501,6 +1890,7 @@ let markedSquares = [];        // Array of { r, c } right-click square highlight
 let previewArrow = null;       // Live arrow while right-click dragging
 let resignConfirmTimer = null;
 let opponentDisconnected = false;
+let secretPickCol = null;
 
 function generateGameCode() {
   const bytes = new Uint8Array(5);
@@ -1717,6 +2107,24 @@ function serializeAuthoritativeState(state) {
     captured: state.captured,
     pockets: state.pockets || { w: [], b: [] },
     promoted: state.promoted || [],
+    secretQueens: state.secretQueens
+      ? {
+          w: state.secretQueens.w
+            ? {
+                sq: state.secretQueens.w.sq ? { ...state.secretQueens.w.sq } : null,
+                revealed: Boolean(state.secretQueens.w.revealed),
+                picked: Boolean(state.secretQueens.w.picked)
+              }
+            : null,
+          b: state.secretQueens.b
+            ? {
+                sq: state.secretQueens.b.sq ? { ...state.secretQueens.b.sq } : null,
+                revealed: Boolean(state.secretQueens.b.revealed),
+                picked: Boolean(state.secretQueens.b.picked)
+              }
+            : null
+        }
+      : null,
     historyFrames: state.historyFrames
   };
 }
@@ -1728,7 +2136,21 @@ function serializeAuthoritativeState(state) {
 function serializeStateForPeer(state, peerColor) {
   const vDef = getVariantDef(state);
   if (!vDef.fogOfWar || state.status !== 'playing') {
-    return serializeAuthoritativeState(state);
+    const auth = serializeAuthoritativeState(state);
+    if (vDef.secretQueen && auth.secretQueens) {
+      const oppColor = peerColor === 'w' ? 'b' : 'w';
+      if (auth.secretQueens[oppColor] && !auth.secretQueens[oppColor].revealed) {
+        auth.secretQueens = {
+          ...auth.secretQueens,
+          [oppColor]: {
+            sq: null,
+            revealed: false,
+            picked: Boolean(auth.secretQueens[oppColor].picked)
+          }
+        };
+      }
+    }
+    return auth;
   }
 
   const vis = computeVisibleSquares(state, peerColor);
@@ -1835,6 +2257,7 @@ function validateAndHydrateState(raw) {
       : 'standard';
 
   const allowedStatuses = [
+    'secret_pick',
     'playing',
     'checkmate',
     'king_captured',
@@ -1933,6 +2356,23 @@ function validateAndHydrateState(raw) {
       : null;
   const cleanFogMoves = isFogMasked ? sanitizeLegalMoveList(raw.fogLegalMoves) : null;
 
+  let cleanSecretQueens = null;
+  if (cleanVariant === 'secret' && raw.secretQueens && typeof raw.secretQueens === 'object') {
+    const cleanSide = (s) => {
+      if (!s || typeof s !== 'object') return { sq: null, revealed: false, picked: false };
+      const sq = isValidCoordObj(s.sq) ? { r: s.sq.r, c: s.sq.c } : null;
+      return {
+        sq,
+        revealed: Boolean(s.revealed),
+        picked: Boolean(s.picked)
+      };
+    };
+    cleanSecretQueens = {
+      w: cleanSide(raw.secretQueens.w),
+      b: cleanSide(raw.secretQueens.b)
+    };
+  }
+
   const hydrated = {
     variant: cleanVariant,
     board: cleanBoard,
@@ -1964,7 +2404,8 @@ function validateAndHydrateState(raw) {
     historyFrames: cleanFrames,
     fogMasked: isFogMasked,
     fogVisible: cleanFogVisible,
-    fogLegalMoves: cleanFogMoves
+    fogLegalMoves: cleanFogMoves,
+    secretQueens: cleanSecretQueens
   };
 
   if (hydrated.historyFrames.length === 0) {
@@ -2091,6 +2532,9 @@ function startNewMatchAsHost(isRematch = false) {
   initClockForNewMatch();
 
   gameState = createInitialState(matchVariant);
+  if (gameState.status === 'secret_pick') {
+    clockState.running = false;
+  }
   viewPly = 0;
 
   sendPacket(net.conn, {
@@ -2115,6 +2559,22 @@ function handleHostIncomingData(data) {
 
   if (data.type === 'hello' || data.type === 'name_update') {
     net.peerName = sanitizePlayerName(data.name);
+    broadcastHostState();
+    renderAll();
+    return;
+  }
+
+  if (data.type === 'secret_pick') {
+    if (gameState.status !== 'secret_pick') return;
+    if (typeof data.col !== 'number' || data.col < 0 || data.col > 7) return;
+    assignSecretQueen(gameState, guestColor, data.col);
+    if (gameState.secretQueens.w.picked && gameState.secretQueens.b.picked) {
+      gameState.status = 'playing';
+      clockState.running = clockState.timed;
+      clockState.lastTick = Date.now();
+      clockState.lastSyncPerf = getNowPerf();
+      playSound('gameStart');
+    }
     broadcastHostState();
     renderAll();
     return;
@@ -2147,6 +2607,14 @@ function handleHostIncomingData(data) {
     }
 
     if (!candidate) {
+      const pinTrigger = checkSecretQueenPinInteraction(gameState, data.from, data.to);
+      if (pinTrigger) {
+        revealSecretQueen(gameState, pinTrigger.secretColor);
+        broadcastHostState();
+        playSound('illegal');
+        renderAll();
+        return;
+      }
       broadcastHostState();
       return;
     }
@@ -2753,6 +3221,11 @@ function cacheDom() {
   dom.drawBtn = document.getElementById('draw-btn');
   dom.resignBtn = document.getElementById('resign-btn');
   dom.rematchBtn = document.getElementById('rematch-btn');
+
+  dom.secretPickBar = document.getElementById('secret-pick-bar');
+  dom.secretPickText = document.getElementById('secret-pick-text');
+  dom.secretRandomBtn = document.getElementById('secret-random-btn');
+  dom.secretConfirmBtn = document.getElementById('secret-confirm-btn');
 }
 
 function isViewingLive() {
@@ -2841,6 +3314,7 @@ function clearBoardTransientUI() {
   closePromotionPicker();
   resetResignConfirm();
   pendingSlideAnim = null;
+  secretPickCol = null;
 }
 
 function selectSquare(r, c) {
@@ -3035,7 +3509,19 @@ function requestOrOpenPromotion(from, to, viaDrag = false) {
   const legal = getLegalMovesForSquare(gameState, from.r, from.c).filter(
     (m) => m.to.r === to.r && m.to.c === to.c
   );
-  if (legal.length === 0) return false;
+  if (legal.length === 0) {
+    const pinTrigger = checkSecretQueenPinInteraction(gameState, from, to);
+    if (pinTrigger) {
+      revealSecretQueen(gameState, pinTrigger.secretColor);
+      setGameFeedback('Illegal move blocked: Secret Queen revealed!');
+      playSound('illegal');
+      if (net.mode === 'online' && net.role === 'host') {
+        broadcastHostState();
+      }
+      renderAll();
+    }
+    return false;
+  }
 
   if (legal[0].promotion !== null) {
     const moverColor = getPieceColor(gameState.board[from.r][from.c]);
@@ -3067,6 +3553,14 @@ function submitPlayerMove(from, to, promotion, viaDrag = false, fromPremove = fa
       }
       playMoveFeedbackSound(prevState, gameState, true);
       renderAll();
+    } else {
+      const pinTrigger = checkSecretQueenPinInteraction(gameState, from, to);
+      if (pinTrigger) {
+        revealSecretQueen(gameState, pinTrigger.secretColor);
+        setGameFeedback('Illegal move blocked: Secret Queen revealed!');
+        playSound('illegal');
+        renderAll();
+      }
     }
     return;
   }
@@ -3076,7 +3570,17 @@ function submitPlayerMove(from, to, promotion, viaDrag = false, fromPremove = fa
       if (gameState.turn !== net.myColor) return;
       const prevState = gameState;
       const candidate = tryMakeMove(gameState, from, to, promotion);
-      if (!candidate) return;
+      if (!candidate) {
+        const pinTrigger = checkSecretQueenPinInteraction(gameState, from, to);
+        if (pinTrigger) {
+          revealSecretQueen(gameState, pinTrigger.secretColor);
+          setGameFeedback('Illegal move blocked: Secret Queen revealed!');
+          playSound('illegal');
+          broadcastHostState();
+          renderAll();
+        }
+        return;
+      }
 
       if (!commitHostClockTurn(net.myColor)) {
         reconcileInteractionAfterTurnChange();
@@ -3109,7 +3613,16 @@ function submitPlayerMove(from, to, promotion, viaDrag = false, fromPremove = fa
       if (gameState.turn !== net.myColor) return;
       const prevState = gameState;
       const preview = tryMakeMove(gameState, from, to, promotion);
-      if (!preview) return;
+      if (!preview) {
+        const pinTrigger = checkSecretQueenPinInteraction(gameState, from, to);
+        if (pinTrigger) {
+          revealSecretQueen(gameState, pinTrigger.secretColor);
+          setGameFeedback('Illegal move blocked: Secret Queen revealed!');
+          playSound('illegal');
+          renderAll();
+        }
+        return;
+      }
 
       // Optimistically update Guest state immediately so Guest can queue premoves with 0ms latency!
       gameState = preview;
@@ -3913,6 +4426,22 @@ function handleBoardPointerDown(e) {
   // If viewing historical move, only allow inspecting board (click >| to play)
   if (!isViewingLive()) return;
 
+  if (gameState.status === 'secret_pick') {
+    let pickColor = null;
+    if (net.mode === 'online') {
+      pickColor = net.myColor;
+    } else {
+      pickColor = !gameState.secretQueens?.w?.picked ? 'w' : 'b';
+    }
+    const pickRow = pickColor === 'w' ? 6 : 1;
+    if (sq.r === pickRow && gameState.board[sq.r][sq.c] === pickColor + 'p') {
+      secretPickCol = sq.c;
+      if (dom.secretConfirmBtn) dom.secretConfirmBtn.disabled = false;
+      renderBoard();
+    }
+    return;
+  }
+
   const activeTurnColor = net.mode === 'online' ? net.myColor : gameState.turn;
 
   // 1A-Drop. Normal turn: Crazyhouse pocket piece is selected and player clicks a legal drop square -> Drop!
@@ -3931,6 +4460,19 @@ function handleBoardPointerDown(e) {
     if (isLegalTarget) {
       e.preventDefault();
       requestOrOpenPromotion(selectedSq, sq, false);
+      return;
+    }
+    const pinTrigger = checkSecretQueenPinInteraction(gameState, selectedSq, sq);
+    if (pinTrigger) {
+      e.preventDefault();
+      revealSecretQueen(gameState, pinTrigger.secretColor);
+      setGameFeedback('Illegal move blocked: Secret Queen revealed!');
+      playSound('illegal');
+      if (net.mode === 'online' && net.role === 'host') {
+        broadcastHostState();
+      }
+      clearSelection();
+      renderAll();
       return;
     }
   }
@@ -4389,6 +4931,22 @@ function renderBoard() {
         sqEl.classList.add('in-check');
       }
 
+      if (viewingLive && gameState.status === 'secret_pick') {
+        let pickColor = null;
+        if (net.mode === 'online') {
+          pickColor = net.myColor;
+        } else {
+          pickColor = !gameState.secretQueens?.w?.picked ? 'w' : 'b';
+        }
+        const pickRow = pickColor === 'w' ? 6 : 1;
+        if (r === pickRow && displayBoard[r][c] === pickColor + 'p') {
+          sqEl.classList.add('secret-pickable');
+          if (secretPickCol === c) {
+            sqEl.classList.add('secret-pick-selected');
+          }
+        }
+      }
+
       if (
         viewingLive &&
         drag.active &&
@@ -4446,6 +5004,22 @@ function renderBoard() {
           img.classList.add('dragging-source');
         }
         sqEl.appendChild(img);
+
+        if (getVariantDef(gameState).secretQueen && frame.secretQueens) {
+          const sqObj = frame.secretQueens[pieceColor];
+          if (sqObj && sqObj.sq && sqObj.sq.r === r && sqObj.sq.c === c && !sqObj.revealed) {
+            const isOwner = net.mode === 'online' ? pieceColor === net.myColor : true;
+            if (isOwner) {
+              const badge = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+              badge.setAttribute('class', 'secret-badge');
+              badge.setAttribute('aria-hidden', 'true');
+              const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+              use.setAttribute('href', '#icon-variant-secret');
+              badge.appendChild(use);
+              sqEl.appendChild(badge);
+            }
+          }
+        }
       }
 
       if (legalMap.has(key)) {
@@ -4828,6 +5402,8 @@ function renderStatusAndControls() {
   } else if (opponentDisconnected) {
     statusText = 'Opponent disconnected from the game.';
     dom.statusBanner.classList.add('game-over');
+  } else if (gameState.status === 'secret_pick') {
+    statusText = 'Secret Queen Setup: choose your hidden Queen pawn!';
   } else if (gameState.status === 'playing') {
     const sideLabel = gameState.turn === 'w' ? 'White' : 'Black';
     if (net.mode === 'online') {
@@ -4920,6 +5496,34 @@ function renderStatusAndControls() {
   }
   if (dom.mobileDrawBanner) {
     dom.mobileDrawBanner.classList.toggle('hidden', !incomingDraw);
+  }
+
+  if (dom.secretPickBar) {
+    const inPick = gameState.status === 'secret_pick';
+    dom.secretPickBar.classList.toggle('hidden', !inPick);
+    if (inPick) {
+      if (net.mode === 'online') {
+        const mySQ = gameState.secretQueens?.[net.myColor];
+        if (mySQ && mySQ.picked) {
+          dom.secretPickText.textContent = 'Secret Queen confirmed! Waiting for opponent...';
+          dom.secretConfirmBtn.disabled = true;
+          dom.secretRandomBtn.disabled = true;
+        } else {
+          dom.secretPickText.textContent = 'Choose your Secret Queen: tap any pawn';
+          dom.secretConfirmBtn.disabled = secretPickCol === null;
+          dom.secretRandomBtn.disabled = false;
+        }
+      } else {
+        const whitePicked = Boolean(gameState.secretQueens?.w?.picked);
+        if (!whitePicked) {
+          dom.secretPickText.textContent = 'White: tap a pawn to choose your Secret Queen';
+        } else {
+          dom.secretPickText.textContent = 'Black: tap a pawn to choose your Secret Queen';
+        }
+        dom.secretConfirmBtn.disabled = secretPickCol === null;
+        dom.secretRandomBtn.disabled = false;
+      }
+    }
   }
 
   // Replay Navigation Buttons (disabled while live Fog of War is active; unlocked once game ends)
@@ -5795,6 +6399,61 @@ function initUI() {
   if (dom.mobResignBtn) dom.mobResignBtn.addEventListener('click', handleResignClick);
   if (dom.mobRematchBtn) dom.mobRematchBtn.addEventListener('click', handleRematchClick);
 
+  if (dom.secretRandomBtn) {
+    dom.secretRandomBtn.addEventListener('click', () => {
+      secretPickCol = Math.floor(Math.random() * 8);
+      if (dom.secretConfirmBtn) dom.secretConfirmBtn.disabled = false;
+      renderBoard();
+    });
+  }
+
+  if (dom.secretConfirmBtn) {
+    dom.secretConfirmBtn.addEventListener('click', () => {
+      if (secretPickCol === null) return;
+      if (gameState.status !== 'secret_pick') return;
+
+      if (net.mode === 'online') {
+        if (net.role === 'host') {
+          assignSecretQueen(gameState, net.myColor, secretPickCol);
+          secretPickCol = null;
+          if (gameState.secretQueens.w.picked && gameState.secretQueens.b.picked) {
+            gameState.status = 'playing';
+            clockState.running = clockState.timed;
+            clockState.lastTick = Date.now();
+            clockState.lastSyncPerf = getNowPerf();
+            playSound('gameStart');
+          }
+          broadcastHostState();
+          renderAll();
+        } else if (net.role === 'guest') {
+          sendPacket(net.conn, { type: 'secret_pick', col: secretPickCol });
+          if (gameState.secretQueens && gameState.secretQueens[net.myColor]) {
+            gameState.secretQueens[net.myColor].picked = true;
+            gameState.secretQueens[net.myColor].sq = {
+              r: net.myColor === 'w' ? 6 : 1,
+              c: secretPickCol
+            };
+          }
+          secretPickCol = null;
+          renderAll();
+        }
+      } else {
+        const whitePicked = Boolean(gameState.secretQueens?.w?.picked);
+        if (!whitePicked) {
+          assignSecretQueen(gameState, 'w', secretPickCol);
+          secretPickCol = null;
+          renderAll();
+        } else {
+          assignSecretQueen(gameState, 'b', secretPickCol);
+          secretPickCol = null;
+          gameState.status = 'playing';
+          playSound('gameStart');
+          renderAll();
+        }
+      }
+    });
+  }
+
   // Live 100ms clock refresh
   if (clockState.intervalId) clearInterval(clockState.intervalId);
   clockState.intervalId = setInterval(tickClocksUIAndAuthority, 100);
@@ -5882,6 +6541,10 @@ if (typeof module !== 'undefined' && module.exports) {
     extractCleanPartyCode: extractCleanGameCode,
     validateAndHydrateState,
     serializeAuthoritativeState,
-    serializeStateForPeer
+    serializeStateForPeer,
+    checkSecretQueenPinInteraction,
+    revealSecretQueen,
+    assignSecretQueen,
+    isStandardPawnMove
   };
 }

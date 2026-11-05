@@ -51,6 +51,10 @@
   --var-fog-border: #3b586c;
   --var-fog-fg: #84badc;
 
+  --var-secret-bg: #1f3833;
+  --var-secret-border: #355f56;
+  --var-secret-fg: #6fcfb6;
+
   --board-size: min(75vh, calc(100vw - 410px), 660px);
 }
 
@@ -651,11 +655,22 @@ input,
   color: var(--var-fog-fg);
 }
 
+.variant-icon-badge[data-variant="secret"] {
+  background: var(--var-secret-bg);
+  border-color: var(--var-secret-border);
+  color: var(--var-secret-fg);
+}
+
 .variant-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
   margin-bottom: 6px;
+}
+
+/* Odd number of variant cards: last card stretches across the full row */
+.variant-grid .variant-btn:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 
 .variant-btn {
@@ -725,6 +740,11 @@ input,
 .variant-btn.active[data-variant="fog"] {
   background: #202b33;
   border-color: #6ea5c8;
+}
+
+.variant-btn.active[data-variant="secret"] {
+  background: #1d2f2b;
+  border-color: #5bb59e;
 }
 
 .variant-btn.active .variant-card-title {
@@ -1236,6 +1256,12 @@ input,
   border-color: var(--var-fog-border);
 }
 
+.variant-tag[data-variant="secret"] {
+  color: var(--var-secret-fg);
+  background: var(--var-secret-bg);
+  border-color: var(--var-secret-border);
+}
+
 .game-feedback {
   margin: 9px 0 0;
   font-size: 12px;
@@ -1451,9 +1477,18 @@ input,
 
 .local-variant-bar {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 5px;
   margin-bottom: 7px;
+}
+
+/* 5 variants: 3 buttons on the first row, 2 wider buttons on the second */
+.local-variant-bar .local-variant-btn {
+  grid-column: span 2;
+}
+
+.local-variant-bar .local-variant-btn:nth-child(n + 4) {
+  grid-column: span 3;
 }
 
 .local-variant-btn {
@@ -1501,6 +1536,10 @@ input,
   color: var(--var-fog-fg);
 }
 
+.local-variant-btn[data-variant="secret"] .variant-mini-glyph {
+  color: var(--var-secret-fg);
+}
+
 .local-variant-btn:hover {
   color: var(--text-main);
   border-color: #57544e;
@@ -1525,6 +1564,73 @@ input,
 .local-variant-btn.active[data-variant="fog"] {
   background: #202b33;
   border-color: #6ea5c8;
+}
+
+.local-variant-btn.active[data-variant="secret"] {
+  background: #1d2f2b;
+  border-color: #5bb59e;
+}
+
+/* --- Secret Queen Chess: board marker, pick phase & reveal flash --- */
+.secret-badge {
+  position: absolute;
+  top: 3%;
+  right: 3%;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background: #1f3833;
+  border: 1px solid #5bb59e;
+  padding: 2%;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.square.secret-pickable {
+  cursor: pointer;
+  box-shadow: inset 0 0 0 2px rgba(111, 207, 182, 0.45);
+}
+
+.square.secret-pick-selected {
+  box-shadow: inset 0 0 0 3px #6fcfb6;
+}
+
+.square.secret-revealed {
+  box-shadow: inset 0 0 0 3px #6fcfb6;
+}
+
+.secret-pick-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: var(--board-size);
+  margin: 6px auto 0;
+  padding: 7px 9px;
+  background: var(--var-secret-bg);
+  border: 1px solid var(--var-secret-border);
+  border-radius: 6px;
+  color: #d8efe8;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.secret-pick-text {
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.secret-pick-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.secret-pick-actions .btn {
+  padding: 6px 11px;
+  font-size: 12px;
 }
 
 .controls-row {
@@ -1687,6 +1793,12 @@ input,
     background: var(--var-fog-bg);
     border-color: var(--var-fog-border);
     color: var(--var-fog-fg);
+  }
+
+  .mobile-variant-pill[data-variant="secret"] {
+    background: var(--var-secret-bg);
+    border-color: var(--var-secret-border);
+    color: var(--var-secret-fg);
   }
 
   .mobile-variant-pill .variant-glyph {
