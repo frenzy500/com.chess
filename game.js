@@ -3184,7 +3184,7 @@ function startOpponentDisconnectGrace() {
   clearOpponentDisconnectGraceTimer();
   opponentGraceSecondsLeft = 30;
   opponentDisconnected = true;
-  clockState.running = false;
+  // Clock continues running: switching apps (e.g. to Discord) does not pause the match timer
   renderAll();
 
   opponentGraceTimer = setInterval(() => {
