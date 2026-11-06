@@ -2031,9 +2031,35 @@ const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const PEER_ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' }
-  ]
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:openrelay.metered.ca:80' },
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    },
+    {
+      urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
+    }
+  ],
+  iceCandidatePoolSize: 10
 };
+
+let heartbeatInterval = null;
+let lastHeartbeatReceived = Date.now();
+let opponentGraceTimer = null;
+let opponentGraceSecondsLeft = 30;
+let guestReconnectAttempts = 0;
+let guestReconnectTimer = null;
 
 function getNowPerf() {
   return typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
@@ -2790,8 +2816,26 @@ function handleHostIncomingData(data) {
 
   const guestColor = net.myColor === 'w' ? 'b' : 'w';
 
+  lastHeartbeatReceived = Date.now();
+  if (data.type === 'ping') {
+    sendPacket(net.conn, { type: 'pong', t: data.t });
+    return;
+  }
+  if (data.type === 'pong') {
+    if (opponentDisconnected) {
+      opponentDisconnected = false;
+      clearOpponentDisconnectGraceTimer();
+      renderAll();
+    }
+    return;
+  }
+
   if (data.type === 'hello' || data.type === 'name_update') {
     net.peerName = sanitizePlayerName(data.name);
+    if (opponentDisconnected) {
+      opponentDisconnected = false;
+      clearOpponentDisconnectGraceTimer();
+    }
     broadcastHostState();
     renderAll();
     return;
@@ -2932,6 +2976,20 @@ function handleGuestIncomingData(data) {
   if (!allowIncomingPacket()) return;
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return;
 
+  lastHeartbeatReceived = Date.now();
+  if (data.type === 'ping') {
+    sendPacket(net.conn, { type: 'pong', t: data.t });
+    return;
+  }
+  if (data.type === 'pong') {
+    if (opponentDisconnected) {
+      opponentDisconnected = false;
+      clearOpponentDisconnectGraceTimer();
+      renderAll();
+    }
+    return;
+  }
+
   if (data.type === 'room_locked') {
     cleanupNetworkSession();
     setGameFeedback('That game is already full (2/2 players).');
@@ -3057,6 +3115,13 @@ function handleGuestIncomingData(data) {
 }
 
 function cleanupNetworkSession() {
+  stopHeartbeat();
+  clearOpponentDisconnectGraceTimer();
+  if (guestReconnectTimer) {
+    clearTimeout(guestReconnectTimer);
+    guestReconnectTimer = null;
+  }
+  guestReconnectAttempts = 0;
   if (net.joinTimer) {
     clearTimeout(net.joinTimer);
     net.joinTimer = null;
@@ -3090,6 +3155,162 @@ function cleanupNetworkSession() {
   clearBoardTransientUI();
 }
 
+function startHeartbeat() {
+  stopHeartbeat();
+  lastHeartbeatReceived = Date.now();
+  heartbeatInterval = setInterval(() => {
+    if (net.conn && net.conn.open) {
+      sendPacket(net.conn, { type: 'ping', t: Date.now() });
+    }
+    if (
+      net.mode === 'online' &&
+      (gameState.status === 'playing' || gameState.status === 'secret_pick') &&
+      !opponentDisconnected &&
+      Date.now() - lastHeartbeatReceived > 14000
+    ) {
+      handleTransientDisconnect();
+    }
+  }, 3000);
+}
+
+function stopHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+}
+
+function startOpponentDisconnectGrace() {
+  clearOpponentDisconnectGraceTimer();
+  opponentGraceSecondsLeft = 30;
+  opponentDisconnected = true;
+  clockState.running = false;
+  renderAll();
+
+  opponentGraceTimer = setInterval(() => {
+    opponentGraceSecondsLeft--;
+    if (opponentGraceSecondsLeft <= 0) {
+      clearOpponentDisconnectGraceTimer();
+      if (
+        net.mode === 'online' &&
+        (gameState.status === 'playing' || gameState.status === 'secret_pick')
+      ) {
+        gameState.status = 'resigned';
+        gameState.winner = net.myColor;
+        setGameFeedback('Opponent disconnected and did not return.');
+        playSound('gameEnd');
+        renderAll();
+      }
+    } else {
+      renderStatusAndControls();
+    }
+  }, 1000);
+}
+
+function clearOpponentDisconnectGraceTimer() {
+  if (opponentGraceTimer) {
+    clearInterval(opponentGraceTimer);
+    opponentGraceTimer = null;
+  }
+}
+
+function handleTransientDisconnect() {
+  if (net.mode !== 'online') return;
+  const isMatchActive = gameState.status === 'playing' || gameState.status === 'secret_pick';
+  if (!isMatchActive) {
+    opponentDisconnected = true;
+    clockState.running = false;
+    renderAll();
+    return;
+  }
+
+  if (!opponentGraceTimer) {
+    startOpponentDisconnectGrace();
+  }
+
+  if (net.role === 'guest') {
+    attemptGuestReconnect();
+  }
+}
+
+function attemptGuestReconnect() {
+  if (net.role !== 'guest' || !net.roomCode || net.mode !== 'online') return;
+  if (guestReconnectAttempts >= 6) return;
+  if (guestReconnectTimer) return;
+
+  guestReconnectAttempts++;
+  guestReconnectTimer = setTimeout(() => {
+    guestReconnectTimer = null;
+    if (net.role !== 'guest' || net.mode !== 'online' || (net.conn && net.conn.open)) return;
+
+    if (!net.peer || net.peer.destroyed) {
+      const peer = new Peer({ config: PEER_ICE_CONFIG });
+      net.peer = peer;
+      peer.on('open', () => {
+        connectToHostForReconnect(peer);
+      });
+      peer.on('disconnected', () => {
+        if (net.mode !== 'local' && !peer.destroyed) {
+          try { peer.reconnect(); } catch (_) {}
+        }
+      });
+      return;
+    }
+
+    if (net.peer.disconnected) {
+      try { net.peer.reconnect(); } catch (_) {}
+    }
+
+    connectToHostForReconnect(net.peer);
+  }, 1800);
+}
+
+function connectToHostForReconnect(peer) {
+  try {
+    if (net.conn) {
+      try { net.conn.close(); } catch (_) {}
+    }
+    const newConn = peer.connect(PEER_ID_PREFIX + net.roomCode);
+    net.conn = newConn;
+
+    const onReconnected = () => {
+      if (net.conn !== newConn) return;
+      guestReconnectAttempts = 0;
+      clearOpponentDisconnectGraceTimer();
+      opponentDisconnected = false;
+      startHeartbeat();
+      setGameFeedback('Reconnected to game!');
+      setTimeout(() => setGameFeedback(''), 3000);
+      sendPacket(newConn, { type: 'hello', name: net.myName, reconnect: true });
+      renderAll();
+    };
+
+    if (newConn.open) onReconnected();
+    else newConn.on('open', onReconnected);
+
+    newConn.on('data', (data) => {
+      if (net.conn === newConn) {
+        lastHeartbeatReceived = Date.now();
+        handleGuestIncomingData(data);
+      }
+    });
+
+    newConn.on('close', () => {
+      if (net.conn === newConn) {
+        handleTransientDisconnect();
+      }
+    });
+
+    newConn.on('error', () => {
+      if (net.conn === newConn) {
+        handleTransientDisconnect();
+      }
+    });
+  } catch (_) {
+    attemptGuestReconnect();
+  }
+}
+
 function createGameRoom(retryCount = 0) {
   if (typeof Peer === 'undefined') {
     setGameFeedback('Networking library failed to load. Check your internet connection.');
@@ -3121,15 +3342,61 @@ function createGameRoom(retryCount = 0) {
   net.peer = peer;
 
   peer.on('connection', (incomingConn) => {
-    // ROOM LOCKING: Once 2 players are in the game, reject any 3rd connection immediately
-    if (net.conn !== null || net.roomLocked) {
+    const isGameActive =
+      net.mode === 'online' &&
+      (gameState.status === 'playing' || gameState.status === 'secret_pick');
+    const isConnectionDead = !net.conn || !net.conn.open || opponentDisconnected;
+
+    // Allow re-connecting guest to re-attach to the ongoing match!
+    if (isGameActive && isConnectionDead) {
+      if (net.conn && net.conn !== incomingConn) {
+        try { net.conn.close(); } catch (_) {}
+      }
+      net.conn = incomingConn;
+      opponentDisconnected = false;
+      clearOpponentDisconnectGraceTimer();
+
+      const acceptReconnect = () => {
+        if (net.conn !== incomingConn) return;
+        opponentDisconnected = false;
+        startHeartbeat();
+        setGameFeedback('Opponent reconnected!');
+        setTimeout(() => setGameFeedback(''), 3000);
+        broadcastHostState();
+        renderAll();
+      };
+
+      if (incomingConn.open) acceptReconnect();
+      else incomingConn.on('open', acceptReconnect);
+
+      incomingConn.on('data', (data) => {
+        if (net.conn === incomingConn) {
+          lastHeartbeatReceived = Date.now();
+          handleHostIncomingData(data);
+        }
+      });
+
+      incomingConn.on('close', () => {
+        if (net.conn === incomingConn) {
+          handleTransientDisconnect();
+        }
+      });
+
+      incomingConn.on('error', () => {
+        if (net.conn === incomingConn) {
+          handleTransientDisconnect();
+        }
+      });
+      return;
+    }
+
+    // ROOM LOCKING: Reject 3rd-party intruders if room is already active with 2 players
+    if ((net.conn !== null && net.conn.open) || net.roomLocked) {
       const rejectIntruder = () => {
         sendPacket(incomingConn, { type: 'room_locked' });
         setTimeout(() => {
-          try {
-            incomingConn.close();
-          } catch (_) {}
-        }, 120);
+          try { incomingConn.close(); } catch (_) {}
+        }, 150);
       };
       if (incomingConn.open) rejectIntruder();
       else incomingConn.on('open', rejectIntruder);
@@ -3143,6 +3410,8 @@ function createGameRoom(retryCount = 0) {
       if (net.conn !== incomingConn) return;
       net.mode = 'online';
       opponentDisconnected = false;
+      clearOpponentDisconnectGraceTimer();
+      startHeartbeat();
       setGameFeedback('');
       startNewMatchAsHost(false);
     };
@@ -3152,29 +3421,28 @@ function createGameRoom(retryCount = 0) {
 
     incomingConn.on('data', (data) => {
       if (net.conn === incomingConn) {
+        lastHeartbeatReceived = Date.now();
         handleHostIncomingData(data);
       }
     });
 
     incomingConn.on('close', () => {
       if (net.conn === incomingConn) {
-        opponentDisconnected = true;
-        clockState.running = false;
-        premoveQueue = [];
-        clearBoardTransientUI();
-        renderAll();
+        handleTransientDisconnect();
       }
     });
 
     incomingConn.on('error', () => {
       if (net.conn === incomingConn) {
-        opponentDisconnected = true;
-        clockState.running = false;
-        premoveQueue = [];
-        clearBoardTransientUI();
-        renderAll();
+        handleTransientDisconnect();
       }
     });
+  });
+
+  peer.on('disconnected', () => {
+    if (net.mode !== 'local' && !peer.destroyed) {
+      try { peer.reconnect(); } catch (_) {}
+    }
   });
 
   peer.on('error', (err) => {
@@ -3222,15 +3490,22 @@ function joinGameRoom(rawCode) {
       setGameFeedback(`Could not connect to game ${code}. Check the code and try again.`);
       renderAll();
     }
-  }, 10000);
+  }, 15000);
+
+  peer.on('disconnected', () => {
+    if (net.mode !== 'local' && !peer.destroyed) {
+      try { peer.reconnect(); } catch (_) {}
+    }
+  });
 
   peer.on('open', () => {
     if (net.peer !== peer) return;
-    const conn = peer.connect(PEER_ID_PREFIX + code, { reliable: true });
+    const conn = peer.connect(PEER_ID_PREFIX + code);
     net.conn = conn;
 
     const sendHello = () => {
       sendPacket(conn, { type: 'hello', name: net.myName });
+      startHeartbeat();
     };
 
     if (conn.open) sendHello();
@@ -3238,6 +3513,7 @@ function joinGameRoom(rawCode) {
 
     conn.on('data', (data) => {
       if (net.conn === conn) {
+        lastHeartbeatReceived = Date.now();
         handleGuestIncomingData(data);
       }
     });
@@ -3248,21 +3524,19 @@ function joinGameRoom(rawCode) {
           cleanupNetworkSession();
           setGameFeedback(`Connection to game ${code} closed.`);
         } else {
-          opponentDisconnected = true;
-          clockState.running = false;
-          premoveQueue = [];
-          net.pendingOptimisticPly = null;
-          clearBoardTransientUI();
+          handleTransientDisconnect();
         }
-        renderAll();
       }
     });
 
     conn.on('error', () => {
-      if (net.conn === conn && net.mode === 'joining') {
-        cleanupNetworkSession();
-        setGameFeedback(`Failed to connect to game ${code}.`);
-        renderAll();
+      if (net.conn === conn) {
+        if (net.mode === 'joining') {
+          cleanupNetworkSession();
+          setGameFeedback(`Failed to connect to game ${code}.`);
+        } else {
+          handleTransientDisconnect();
+        }
       }
     });
   });
@@ -5835,7 +6109,11 @@ function renderStatusAndControls() {
   } else if (net.mode === 'joining') {
     statusText = `Connecting to game ${net.roomCode || ''}...`;
   } else if (opponentDisconnected) {
-    statusText = 'Opponent disconnected from the game.';
+    if (opponentGraceTimer && opponentGraceSecondsLeft > 0) {
+      statusText = `Opponent connection lost — waiting ${opponentGraceSecondsLeft}s for reconnect...`;
+    } else {
+      statusText = 'Opponent disconnected from the game.';
+    }
     dom.statusBanner.classList.add('game-over');
   } else if (gameState.status === 'secret_pick') {
     statusText = 'Secret Queen Setup: choose your hidden Queen pawn!';
@@ -7292,6 +7570,42 @@ function initUI() {
 
   renderAll();
   checkAutoJoinFromUrl();
+
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && net.mode === 'online') {
+        if (net.peer && net.peer.disconnected && !net.peer.destroyed) {
+          try { net.peer.reconnect(); } catch (_) {}
+        }
+        if (!net.conn || !net.conn.open) {
+          if (
+            net.role === 'guest' &&
+            (gameState.status === 'playing' || gameState.status === 'secret_pick')
+          ) {
+            attemptGuestReconnect();
+          }
+        } else {
+          sendPacket(net.conn, { type: 'ping', t: Date.now() });
+          if (net.role === 'host') {
+            broadcastHostState();
+          }
+        }
+      }
+    });
+  }
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('online', () => {
+      if (net.peer && net.peer.disconnected && !net.peer.destroyed) {
+        try { net.peer.reconnect(); } catch (_) {}
+      }
+      if (net.mode === 'online') {
+        if (net.role === 'guest' && (!net.conn || !net.conn.open)) {
+          attemptGuestReconnect();
+        }
+      }
+    });
+  }
 }
 
 /* ============================================================================
