@@ -463,6 +463,89 @@ function createInitialState(variant = 'standard', options = {}) {
   return state;
 }
 
+function createCustomState(config = {}) {
+  const cleanVariant = Object.prototype.hasOwnProperty.call(VARIANT_DEFS, config.variant)
+    ? config.variant
+    : 'standard';
+  const customBoard = config.board ? cloneBoard(config.board) : cloneBoard(INITIAL_BOARD);
+  const turn = config.turn === 'b' ? 'b' : 'w';
+
+  const castlingInput = config.castling || {};
+  const castling = {
+    wK: Boolean(castlingInput.wK && customBoard[7]?.[4] === 'wk' && customBoard[7]?.[7] === 'wr'),
+    wQ: Boolean(castlingInput.wQ && customBoard[7]?.[4] === 'wk' && customBoard[7]?.[0] === 'wr'),
+    bK: Boolean(castlingInput.bK && customBoard[0]?.[4] === 'bk' && customBoard[0]?.[7] === 'br'),
+    bQ: Boolean(castlingInput.bQ && customBoard[0]?.[4] === 'bk' && customBoard[0]?.[0] === 'br')
+  };
+
+  const pockets = {
+    w: Array.isArray(config.pockets?.w) ? config.pockets.w.slice() : [],
+    b: Array.isArray(config.pockets?.b) ? config.pockets.b.slice() : []
+  };
+
+  let secretQueens = null;
+  if (cleanVariant === 'secret') {
+    if (config.secretQueens) {
+      secretQueens = {
+        w: config.secretQueens.w ? { ...config.secretQueens.w } : { sq: null, revealed: false, picked: false },
+        b: config.secretQueens.b ? { ...config.secretQueens.b } : { sq: null, revealed: false, picked: false }
+      };
+    } else {
+      secretQueens = {
+        w: { sq: null, revealed: false, picked: false },
+        b: { sq: null, revealed: false, picked: false }
+      };
+    }
+  }
+
+  const state = {
+    variant: cleanVariant,
+    board: customBoard,
+    turn,
+    castling,
+    enPassant: null,
+    halfMoveClock: 0,
+    fullMoveNumber: 1,
+    status:
+      cleanVariant === 'secret' && (!secretQueens?.w?.picked || !secretQueens?.b?.picked)
+        ? 'secret_pick'
+        : 'playing',
+    winner: null,
+    inCheck: false,
+    lastMove: null,
+    moveHistory: [],
+    captured: { w: [], b: [] },
+    pockets,
+    promoted: [],
+    positionCounts: {},
+    historyFrames: [],
+    fogMasked: false,
+    fogVisible: null,
+    fogLegalMoves: null,
+    secretQueens
+  };
+
+  state.inCheck = !getVariantDef(state).royalCaptureWins && isInCheck(state, turn);
+
+  if (state.status === 'playing') {
+    const legalMoves = getAllLegalMoves(state);
+    if (legalMoves.length === 0) {
+      if (state.inCheck) {
+        state.status = 'checkmate';
+        state.winner = turn === 'w' ? 'b' : 'w';
+      } else {
+        state.status = 'stalemate';
+        state.winner = null;
+      }
+    }
+  }
+
+  const key = computePositionKey(state);
+  state.positionCounts[key] = 1;
+  state.historyFrames.push(makeHistoryFrame(state, null));
+  return state;
+}
+
 function cloneState(state) {
   return {
     variant: state.variant || 'standard',
@@ -832,6 +915,125 @@ function isInCheck(state, color) {
   return false;
 }
 
+function validateCustomPosition(
+  board,
+  turn = 'w',
+  variant = 'standard',
+  pockets = null,
+  castling = null,
+  secretQueens = null
+) {
+  if (!board || !Array.isArray(board) || board.length !== 8) {
+    return { valid: false, error: 'Invalid board configuration.' };
+  }
+
+  let whiteKings = 0;
+  let blackKings = 0;
+  let whiteKingSq = null;
+  let blackKingSq = null;
+  let whitePawns = 0;
+  let blackPawns = 0;
+
+  for (let r = 0; r < 8; r++) {
+    if (!Array.isArray(board[r]) || board[r].length !== 8) {
+      return { valid: false, error: 'Invalid board dimensions.' };
+    }
+    for (let c = 0; c < 8; c++) {
+      const code = board[r][c];
+      if (!code) continue;
+      if (code === 'wk') {
+        whiteKings++;
+        whiteKingSq = { r, c };
+      } else if (code === 'bk') {
+        blackKings++;
+        blackKingSq = { r, c };
+      } else if (code === 'wp') {
+        whitePawns++;
+        if (r === 0 || r === 7) {
+          return { valid: false, error: 'Pawns cannot be placed on the 1st or 8th rank.' };
+        }
+      } else if (code === 'bp') {
+        blackPawns++;
+        if (r === 0 || r === 7) {
+          return { valid: false, error: 'Pawns cannot be placed on the 1st or 8th rank.' };
+        }
+      }
+    }
+  }
+
+  if (whiteKings !== 1) {
+    return {
+      valid: false,
+      error: `Position must contain exactly one White King (found ${whiteKings}).`
+    };
+  }
+  if (blackKings !== 1) {
+    return {
+      valid: false,
+      error: `Position must contain exactly one Black King (found ${blackKings}).`
+    };
+  }
+
+  if (
+    Math.abs(whiteKingSq.r - blackKingSq.r) <= 1 &&
+    Math.abs(whiteKingSq.c - blackKingSq.c) <= 1
+  ) {
+    return { valid: false, error: 'Kings cannot be placed on adjacent squares.' };
+  }
+
+  if (pockets) {
+    const checkPocket = (list) => {
+      if (!Array.isArray(list)) return true;
+      for (const p of list) {
+        if (p === 'k' || p === 'wk' || p === 'bk') return false;
+      }
+      return true;
+    };
+    if (!checkPocket(pockets.w) || !checkPocket(pockets.b)) {
+      return { valid: false, error: 'Kings cannot be placed into Crazyhouse pockets.' };
+    }
+  }
+
+  if (variant === 'secret') {
+    if (whitePawns === 0 || blackPawns === 0) {
+      return {
+        valid: false,
+        error: 'Secret Queen variant requires at least one pawn for each side.'
+      };
+    }
+  }
+
+  const vDef = VARIANT_DEFS[variant] || VARIANT_DEFS.standard;
+  if (!vDef.royalCaptureWins) {
+    const probe = {
+      variant,
+      board,
+      castling: castling || { wK: false, wQ: false, bK: false, bQ: false },
+      enPassant: null,
+      secretQueens: secretQueens || null
+    };
+
+    const sideNotToMove = turn === 'w' ? 'b' : 'w';
+    const sideToMove = turn === 'w' ? 'w' : 'b';
+
+    const notToMoveInCheck = isInCheck(probe, sideNotToMove);
+    const toMoveInCheck = isInCheck(probe, sideToMove);
+
+    if (notToMoveInCheck && toMoveInCheck) {
+      return { valid: false, error: 'Both kings cannot be in check at the same time.' };
+    }
+    if (notToMoveInCheck) {
+      const name = sideNotToMove === 'w' ? 'White' : 'Black';
+      return {
+        valid: false,
+        error: `Illegal position: ${name} King is currently in check, but it is not their turn.`
+      };
+    }
+  }
+
+  return { valid: true };
+}
+
 function createProbeState(state, nextBoard, move) {
   const probe = {
     variant: state.variant || 'standard',
@@ -929,10 +1131,24 @@ function revealSecretQueen(state, color) {
   }
 }
 
-function assignSecretQueen(state, color, col) {
+function assignSecretQueen(state, color, col, row = null) {
   if (!state.secretQueens) return;
-  const r = color === 'w' ? 6 : 1;
   const c = Math.max(0, Math.min(7, col));
+  let r = row;
+  if (r === null || !inBounds(r, c) || state.board[r]?.[c] !== color + 'p') {
+    const defaultR = color === 'w' ? 6 : 1;
+    if (state.board[defaultR]?.[c] === color + 'p') {
+      r = defaultR;
+    } else {
+      r = defaultR;
+      for (let scanR = 0; scanR < BOARD_SIZE; scanR++) {
+        if (state.board[scanR]?.[c] === color + 'p') {
+          r = scanR;
+          break;
+        }
+      }
+    }
+  }
   state.secretQueens[color] = {
     sq: { r, c },
     revealed: false,
@@ -1835,11 +2051,12 @@ function computeDisplayElo(name) {
 }
 
 const setupConfig = {
-  variant: 'standard', // 'standard' | 'cannibal' | 'crazyhouse' | 'fog'
+  variant: 'standard', // 'standard' | 'cannibal' | 'crazyhouse' | 'fog' | 'secret'
   timed: true,
   minutes: 10,         // 1..60 minutes
   incrementSec: 5,     // 0..60 seconds gained per turn
-  sidePref: 'w'        // 'w' | 'random' | 'b'
+  sidePref: 'w',       // 'w' | 'random' | 'b'
+  customState: null    // Custom position configuration if set from editor
 };
 
 const clockState = {
@@ -1891,6 +2108,18 @@ let previewArrow = null;       // Live arrow while right-click dragging
 let resignConfirmTimer = null;
 let opponentDisconnected = false;
 let secretPickCol = null;
+
+const editorState = {
+  active: false,
+  board: Array.from({ length: 8 }, () => Array(8).fill(null)),
+  turn: 'w',
+  variant: 'standard',
+  castling: { wK: true, wQ: true, bK: true, bQ: true },
+  pockets: { w: [], b: [] },
+  selectedTool: null,
+  validationError: null
+};
+let editorSelectedSq = null;
 
 function generateGameCode() {
   const bytes = new Uint8Array(5);
@@ -2531,7 +2760,11 @@ function startNewMatchAsHost(isRematch = false) {
   clearBoardTransientUI();
   initClockForNewMatch();
 
-  gameState = createInitialState(matchVariant);
+  if (!isRematch && setupConfig.customState) {
+    gameState = createCustomState(setupConfig.customState);
+  } else {
+    gameState = createInitialState(matchVariant);
+  }
   if (gameState.status === 'secret_pick') {
     clockState.running = false;
   }
@@ -2876,7 +3109,11 @@ function createGameRoom(retryCount = 0) {
   net.myColor = setupConfig.sidePref === 'b' ? 'b' : 'w';
   boardFlipped = net.myColor === 'b';
   initClockForNewMatch();
-  gameState = createInitialState(setupConfig.variant);
+  if (setupConfig.customState) {
+    gameState = createCustomState(setupConfig.customState);
+  } else {
+    gameState = createInitialState(setupConfig.variant);
+  }
   viewPly = 0;
   renderAll();
 
@@ -3185,6 +3422,35 @@ function cacheDom() {
   dom.joinInput = document.getElementById('join-code-input');
   dom.pasteCodeBtn = document.getElementById('paste-code-btn');
   dom.joinBtn = document.getElementById('join-game-btn');
+
+  dom.brandHomeBtn = document.getElementById('brand-home-btn');
+  dom.desktopHomeBtn = document.getElementById('desktop-home-btn');
+  dom.mobileBrandHomeBtn = document.getElementById('mobile-brand-home-btn');
+  dom.mobileHomeBtn = document.getElementById('mobile-home-btn');
+  dom.mobLeaveBtn = document.getElementById('mob-leave-btn');
+  dom.cancelJoinBtn = document.getElementById('cancel-join-btn');
+  dom.customPositionBtn = document.getElementById('custom-position-btn');
+  dom.mobCustomPositionBtn = document.getElementById('mob-custom-position-btn');
+
+  dom.gameEditor = document.getElementById('game-editor');
+  dom.editorBackBtn = document.getElementById('editor-back-btn');
+  dom.editorError = document.getElementById('editor-error');
+  dom.editorPalette = document.getElementById('editor-palette');
+  dom.editorEraseTool = document.getElementById('editor-erase-tool');
+  dom.editorTurnWhite = document.getElementById('editor-turn-white');
+  dom.editorTurnBlack = document.getElementById('editor-turn-black');
+  dom.editorVariantChips = document.getElementById('editor-variant-chips');
+  dom.editorPocketsSection = document.getElementById('editor-pockets-section');
+  dom.editorWhitePocket = document.getElementById('editor-white-pocket');
+  dom.editorBlackPocket = document.getElementById('editor-black-pocket');
+  dom.editorCastlingWk = document.getElementById('editor-castling-wk');
+  dom.editorCastlingWq = document.getElementById('editor-castling-wq');
+  dom.editorCastlingBk = document.getElementById('editor-castling-bk');
+  dom.editorCastlingBq = document.getElementById('editor-castling-bq');
+  dom.editorClearBtn = document.getElementById('editor-clear-btn');
+  dom.editorResetBtn = document.getElementById('editor-reset-btn');
+  dom.editorPlayLocalBtn = document.getElementById('editor-play-local-btn');
+  dom.editorPlayOnlineBtn = document.getElementById('editor-play-online-btn');
 
   dom.waitingSummary = document.getElementById('waiting-summary');
   dom.codeDisplay = document.getElementById('game-code-display');
@@ -4405,6 +4671,66 @@ function handleBoardPointerDown(e) {
   const sq = clientPointToSquare(e.clientX, e.clientY);
   if (!sq) return;
 
+  if (net.mode === 'editor') {
+    e.preventDefault();
+    if (e.button === 2) {
+      editorState.board[sq.r][sq.c] = null;
+      editorSelectedSq = null;
+      syncEditorCastlingValidity();
+      renderBoard();
+      return;
+    }
+
+    if (e.button !== undefined && e.button !== 0) return;
+
+    if (editorState.selectedTool === 'erase') {
+      editorState.board[sq.r][sq.c] = null;
+      editorSelectedSq = null;
+      syncEditorCastlingValidity();
+      renderBoard();
+      return;
+    }
+
+    if (editorState.selectedTool) {
+      editorState.board[sq.r][sq.c] = editorState.selectedTool;
+      editorSelectedSq = null;
+      syncEditorCastlingValidity();
+      renderBoard();
+      return;
+    }
+
+    const occupant = editorState.board[sq.r][sq.c];
+    if (editorSelectedSq) {
+      if (editorSelectedSq.r === sq.r && editorSelectedSq.c === sq.c) {
+        editorSelectedSq = null;
+      } else {
+        editorState.board[sq.r][sq.c] = editorState.board[editorSelectedSq.r][editorSelectedSq.c];
+        editorState.board[editorSelectedSq.r][editorSelectedSq.c] = null;
+        editorSelectedSq = null;
+        syncEditorCastlingValidity();
+      }
+      renderBoard();
+      return;
+    }
+
+    if (occupant) {
+      editorSelectedSq = { r: sq.r, c: sq.c };
+      drag.active = true;
+      drag.moved = false;
+      drag.pointerId = e.pointerId;
+      drag.startX = e.clientX;
+      drag.startY = e.clientY;
+      drag.originSq = { r: sq.r, c: sq.c };
+      drag.from = { r: sq.r, c: sq.c };
+      drag.pieceCode = occupant;
+      drag.isEditorDrag = true;
+      drag.pointerType = e.pointerType;
+      renderBoard();
+      return;
+    }
+    return;
+  }
+
   // Right-click (button 2): draw tactical arrows, mark squares, or cancel premoves
   if (e.button === 2) {
     e.preventDefault();
@@ -4584,7 +4910,12 @@ function handleGlobalPointerMove(e) {
     if (drag.pocketType && drag.pocketColor) {
       originCode = drag.pocketColor + drag.pocketType;
     } else if (drag.originSq) {
-      const displayBoard = isViewingLive() ? getInteractiveLiveBoard() : getDisplayedFrame().board;
+      const displayBoard =
+        net.mode === 'editor'
+          ? editorState.board
+          : isViewingLive()
+          ? getInteractiveLiveBoard()
+          : getDisplayedFrame().board;
       originCode = displayBoard[drag.originSq.r]?.[drag.originSq.c] || null;
     }
     if (!originCode) {
@@ -4633,6 +4964,38 @@ function handleGlobalPointerUp(e) {
   }
 
   if (!drag.active || e.pointerId !== drag.pointerId) return;
+
+  if (drag.isEditorDrag) {
+    const origin = drag.from || drag.originSq;
+    const pieceCode = drag.pieceCode;
+    const wasDragging = drag.moved;
+    drag.active = false;
+    drag.moved = false;
+    drag.isEditorDrag = false;
+    drag.pointerId = null;
+    drag.originSq = null;
+    drag.from = null;
+    drag.pieceCode = null;
+    endDragVisuals();
+
+    const dropSq = clientPointToSquare(e.clientX, e.clientY);
+    if (wasDragging) {
+      if (dropSq) {
+        if (origin && (dropSq.r !== origin.r || dropSq.c !== origin.c)) {
+          editorState.board[dropSq.r][dropSq.c] = pieceCode;
+          editorState.board[origin.r][origin.c] = null;
+        }
+      } else {
+        if (origin) {
+          editorState.board[origin.r][origin.c] = null;
+        }
+      }
+      editorSelectedSq = null;
+      syncEditorCastlingValidity();
+    }
+    renderBoard();
+    return;
+  }
 
   const wasDragging = drag.moved;
   const isPremove = drag.isPremoveDrag;
@@ -4819,7 +5182,70 @@ function renderArrowsOverlay() {
 
 // --- Board, Clocks, Replay & Sidebar Rendering ---
 
+function renderEditorBoard() {
+  const fragment = document.createDocumentFragment();
+  const board = editorState.board;
+
+  for (let visRow = 0; visRow < BOARD_SIZE; visRow++) {
+    for (let visCol = 0; visCol < BOARD_SIZE; visCol++) {
+      const r = boardFlipped ? 7 - visRow : visRow;
+      const c = boardFlipped ? 7 - visCol : visCol;
+      const sqEl = document.createElement('div');
+      const isLight = (r + c) % 2 === 0;
+      sqEl.className = `square ${isLight ? 'light' : 'dark'} editor-square`;
+      sqEl.dataset.r = String(r);
+      sqEl.dataset.c = String(c);
+
+      if (editorSelectedSq && editorSelectedSq.r === r && editorSelectedSq.c === c) {
+        sqEl.classList.add('editor-selected');
+      }
+
+      if (
+        drag.active &&
+        drag.moved &&
+        drag.hoverSq &&
+        drag.hoverSq.r === r &&
+        drag.hoverSq.c === c
+      ) {
+        sqEl.classList.add('drag-target');
+      }
+
+      if (visCol === 0) {
+        const rankSpan = document.createElement('span');
+        rankSpan.className = 'coord coord-rank';
+        rankSpan.textContent = String(BOARD_SIZE - r);
+        sqEl.appendChild(rankSpan);
+      }
+      if (visRow === 7) {
+        const fileSpan = document.createElement('span');
+        fileSpan.className = 'coord coord-file';
+        fileSpan.textContent = FILES[c];
+        sqEl.appendChild(fileSpan);
+      }
+
+      const code = board[r][c];
+      if (code) {
+        const img = document.createElement('img');
+        img.className = 'piece';
+        img.src = getPieceSvgDataUri(code);
+        img.alt = code;
+        img.draggable = false;
+        sqEl.appendChild(img);
+      }
+
+      fragment.appendChild(sqEl);
+    }
+  }
+
+  dom.board.replaceChildren(fragment);
+  if (dom.boardArrows) dom.boardArrows.replaceChildren();
+}
+
 function renderBoard() {
+  if (net.mode === 'editor') {
+    renderEditorBoard();
+    return;
+  }
   const frame = getDisplayedFrame();
   const viewingLive = isViewingLive();
   const fragment = document.createDocumentFragment();
@@ -5285,6 +5711,8 @@ function renderStatusAndControls() {
   dom.gameSetup.classList.toggle('hidden', net.mode !== 'setup');
   dom.gameWaiting.classList.toggle('hidden', net.mode !== 'waiting');
   dom.gameConnected.classList.toggle('hidden', net.mode !== 'online');
+  if (dom.gameEditor) dom.gameEditor.classList.toggle('hidden', net.mode !== 'editor');
+  if (dom.cancelJoinBtn) dom.cancelJoinBtn.classList.toggle('hidden', net.mode !== 'joining');
 
   if (dom.localVariantBar) {
     dom.localVariantBar.classList.toggle('hidden', net.mode !== 'local');
@@ -5293,7 +5721,7 @@ function renderStatusAndControls() {
     }
   }
 
-  dom.localControls.classList.toggle('hidden', net.mode === 'online');
+  dom.localControls.classList.toggle('hidden', net.mode !== 'local');
   dom.onlineControls.classList.toggle('hidden', net.mode !== 'online');
 
   dom.openSetupBtn.disabled = net.mode === 'joining';
@@ -5337,6 +5765,11 @@ function renderStatusAndControls() {
   } else if (net.mode === 'joining') {
     dom.modeBadge.textContent = 'Joining';
     dom.modeBadge.classList.remove('online');
+  } else if (net.mode === 'editor') {
+    dom.modeBadge.textContent = 'Editor';
+    dom.modeBadge.classList.remove('online');
+    if (dom.mobileModeBadge) dom.mobileModeBadge.textContent = 'Editor';
+    syncEditorPanelUI();
   } else {
     dom.modeBadge.textContent = 'Local';
     dom.modeBadge.classList.remove('online');
@@ -5395,6 +5828,8 @@ function renderStatusAndControls() {
       viewPly === 0
         ? `Viewing start position (0/${gameState.moveHistory.length}) — click >| for live`
         : `Viewing move ${viewPly}/${gameState.moveHistory.length} (${gameState.moveHistory[viewPly - 1]}) — click >| for live`;
+  } else if (net.mode === 'editor') {
+    statusText = 'Custom Board Editor — Tap pieces or drag to set up';
   } else if (net.mode === 'waiting') {
     statusText = 'Share your game code or invite link with a friend.';
   } else if (net.mode === 'joining') {
@@ -5536,7 +5971,7 @@ function renderStatusAndControls() {
 
   if (dom.mobPrevBtn) dom.mobPrevBtn.disabled = fogActive || viewPly <= 0;
   if (dom.mobNextBtn) dom.mobNextBtn.disabled = fogActive || viewPly >= totalPlies;
-  if (dom.mobLocalActions) dom.mobLocalActions.classList.toggle('hidden', net.mode === 'online');
+  if (dom.mobLocalActions) dom.mobLocalActions.classList.toggle('hidden', net.mode !== 'local');
   if (dom.mobOnlineActions) dom.mobOnlineActions.classList.toggle('hidden', net.mode !== 'online');
   if (dom.mobPlayFriendBtn) {
     dom.mobPlayFriendBtn.disabled = net.mode === 'joining';
@@ -5663,6 +6098,7 @@ function renderMoveHistory() {
 }
 
 function renderAll() {
+  if (typeof document === 'undefined') return;
   renderBoard();
   renderPlayerBars();
   renderStatusAndControls();
@@ -6008,6 +6444,303 @@ function checkAutoJoinFromUrl() {
   }
 }
 
+function goHome(force = false) {
+  if (!force && net.mode === 'online' && (gameState.status === 'playing' || gameState.status === 'secret_pick')) {
+    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+      const confirmLeave = window.confirm('Leave the active game and return to the main board?');
+      if (!confirmLeave) return false;
+    }
+    sendPacket(net.conn, { type: 'resign' });
+  }
+
+  if (net.joinTimer) {
+    clearTimeout(net.joinTimer);
+    net.joinTimer = null;
+  }
+
+  const savedName = net.myName;
+  cleanupNetworkSession();
+  net.myName = savedName;
+  net.mode = 'local';
+  boardFlipped = false;
+  setupConfig.customState = null;
+  editorState.active = false;
+  editorSelectedSq = null;
+  editorState.selectedTool = null;
+  editorState.validationError = null;
+  premoveQueue = [];
+  clearBoardTransientUI();
+  setGameFeedback('');
+
+  if (dom.sidebar) {
+    dom.sidebar.dataset.mobileTab = 'play';
+  }
+  if (dom.mobileTabs) {
+    dom.mobileTabs.querySelectorAll('.mobile-tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === 'play');
+    });
+  }
+
+  gameState = createInitialState(setupConfig.variant || 'standard');
+  viewPly = 0;
+  renderAll();
+  return true;
+}
+
+function cancelJoin() {
+  if (net.joinTimer) {
+    clearTimeout(net.joinTimer);
+    net.joinTimer = null;
+  }
+  cleanupNetworkSession();
+  net.mode = 'local';
+  setGameFeedback('');
+  renderAll();
+}
+
+function openBoardEditor() {
+  net.mode = 'editor';
+  editorState.active = true;
+  editorState.board = cloneBoard(gameState.board || INITIAL_BOARD);
+  editorState.turn = gameState.turn || 'w';
+  editorState.variant = gameState.variant || setupConfig.variant || 'standard';
+  editorState.castling = gameState.castling
+    ? { ...gameState.castling }
+    : { wK: true, wQ: true, bK: true, bQ: true };
+  editorState.pockets = {
+    w: gameState.pockets?.w ? gameState.pockets.w.slice() : [],
+    b: gameState.pockets?.b ? gameState.pockets.b.slice() : []
+  };
+  editorState.selectedTool = null;
+  editorState.validationError = null;
+  editorSelectedSq = null;
+
+  if (dom.editorError) dom.editorError.classList.add('hidden');
+  initEditorPaletteIcons();
+  syncEditorPanelUI();
+  renderAll();
+
+  if (typeof window !== 'undefined' && window.innerWidth <= 900) {
+    if (dom.sidebar) dom.sidebar.dataset.mobileTab = 'play';
+  }
+}
+
+function closeBoardEditor() {
+  net.mode = 'local';
+  editorState.active = false;
+  editorSelectedSq = null;
+  editorState.selectedTool = null;
+  editorState.validationError = null;
+  renderAll();
+}
+
+function syncEditorCastlingValidity() {
+  if (!dom.editorCastlingWk) return;
+  const board = editorState.board;
+  const canWk = board[7]?.[4] === 'wk' && board[7]?.[7] === 'wr';
+  const canWq = board[7]?.[4] === 'wk' && board[7]?.[0] === 'wr';
+  const canBk = board[0]?.[4] === 'bk' && board[0]?.[7] === 'br';
+  const canBq = board[0]?.[4] === 'bk' && board[0]?.[0] === 'br';
+
+  if (!canWk) editorState.castling.wK = false;
+  if (!canWq) editorState.castling.wQ = false;
+  if (!canBk) editorState.castling.bK = false;
+  if (!canBq) editorState.castling.bQ = false;
+
+  dom.editorCastlingWk.disabled = !canWk;
+  dom.editorCastlingWk.checked = Boolean(editorState.castling.wK);
+
+  dom.editorCastlingWq.disabled = !canWq;
+  dom.editorCastlingWq.checked = Boolean(editorState.castling.wQ);
+
+  dom.editorCastlingBk.disabled = !canBk;
+  dom.editorCastlingBk.checked = Boolean(editorState.castling.bK);
+
+  dom.editorCastlingBq.disabled = !canBq;
+  dom.editorCastlingBq.checked = Boolean(editorState.castling.bQ);
+}
+
+function initEditorPaletteIcons() {
+  if (!dom.editorPalette) return;
+  dom.editorPalette.querySelectorAll('.palette-piece-btn').forEach((btn) => {
+    const code = btn.dataset.piece;
+    if (code && !btn.querySelector('img')) {
+      const img = document.createElement('img');
+      img.src = getPieceSvgDataUri(code);
+      img.alt = code;
+      btn.appendChild(img);
+    }
+  });
+}
+
+function renderEditorPockets() {
+  if (!dom.editorWhitePocket || !dom.editorBlackPocket) return;
+
+  const types = ['p', 'n', 'b', 'r', 'q'];
+  const renderSide = (side, container) => {
+    container.replaceChildren();
+    const currentList = editorState.pockets[side] || [];
+    for (const t of types) {
+      const count = currentList.filter((x) => x === t).length;
+      const ctrl = document.createElement('div');
+      ctrl.className = 'pocket-chip-control';
+
+      const img = document.createElement('img');
+      img.src = getPieceSvgDataUri(side + t);
+      img.alt = side + t;
+      ctrl.appendChild(img);
+
+      const minusBtn = document.createElement('button');
+      minusBtn.type = 'button';
+      minusBtn.className = 'pocket-chip-btn';
+      minusBtn.textContent = '−';
+      minusBtn.title = `Remove ${t.toUpperCase()}`;
+      minusBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = editorState.pockets[side].indexOf(t);
+        if (idx !== -1) {
+          editorState.pockets[side].splice(idx, 1);
+          renderEditorPockets();
+        }
+      });
+      ctrl.appendChild(minusBtn);
+
+      const countSpan = document.createElement('span');
+      countSpan.className = 'pocket-chip-count';
+      countSpan.textContent = String(count);
+      ctrl.appendChild(countSpan);
+
+      const plusBtn = document.createElement('button');
+      plusBtn.type = 'button';
+      plusBtn.className = 'pocket-chip-btn';
+      plusBtn.textContent = '+';
+      plusBtn.title = `Add ${t.toUpperCase()}`;
+      plusBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (editorState.pockets[side].length < 32) {
+          editorState.pockets[side].push(t);
+          renderEditorPockets();
+        }
+      });
+      ctrl.appendChild(plusBtn);
+
+      container.appendChild(ctrl);
+    }
+  };
+
+  renderSide('w', dom.editorWhitePocket);
+  renderSide('b', dom.editorBlackPocket);
+}
+
+function syncEditorPanelUI() {
+  if (!dom.gameEditor) return;
+  if (dom.editorTurnWhite) dom.editorTurnWhite.classList.toggle('active', editorState.turn === 'w');
+  if (dom.editorTurnBlack) dom.editorTurnBlack.classList.toggle('active', editorState.turn === 'b');
+
+  if (dom.editorVariantChips) {
+    dom.editorVariantChips.querySelectorAll('.editor-chip').forEach((chip) => {
+      chip.classList.toggle('active', chip.dataset.variant === editorState.variant);
+    });
+  }
+
+  if (dom.editorPocketsSection) {
+    dom.editorPocketsSection.classList.toggle('hidden', editorState.variant !== 'crazyhouse');
+    if (editorState.variant === 'crazyhouse') {
+      renderEditorPockets();
+    }
+  }
+
+  if (dom.editorPalette) {
+    dom.editorPalette.querySelectorAll('.palette-piece-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.piece === editorState.selectedTool);
+    });
+  }
+  if (dom.editorEraseTool) {
+    dom.editorEraseTool.classList.toggle('active', editorState.selectedTool === 'erase');
+  }
+
+  syncEditorCastlingValidity();
+}
+
+function startLocalGameFromEditor() {
+  const validation = validateCustomPosition(
+    editorState.board,
+    editorState.turn,
+    editorState.variant,
+    editorState.pockets,
+    editorState.castling
+  );
+
+  if (!validation.valid) {
+    if (dom.editorError) {
+      dom.editorError.textContent = validation.error;
+      dom.editorError.classList.remove('hidden');
+    }
+    return false;
+  }
+
+  if (dom.editorError) dom.editorError.classList.add('hidden');
+
+  const config = {
+    variant: editorState.variant,
+    board: editorState.board,
+    turn: editorState.turn,
+    castling: editorState.castling,
+    pockets: editorState.pockets
+  };
+
+  gameState = createCustomState(config);
+  setupConfig.variant = editorState.variant;
+  setupConfig.customState = config;
+  net.mode = 'local';
+  editorState.active = false;
+  editorSelectedSq = null;
+  editorState.selectedTool = null;
+  viewPly = 0;
+  premoveQueue = [];
+  clearBoardTransientUI();
+  setGameFeedback('');
+  playSound('gameStart');
+  renderAll();
+  return true;
+}
+
+function startOnlineGameFromEditor() {
+  const validation = validateCustomPosition(
+    editorState.board,
+    editorState.turn,
+    editorState.variant,
+    editorState.pockets,
+    editorState.castling
+  );
+
+  if (!validation.valid) {
+    if (dom.editorError) {
+      dom.editorError.textContent = validation.error;
+      dom.editorError.classList.remove('hidden');
+    }
+    return false;
+  }
+
+  if (dom.editorError) dom.editorError.classList.add('hidden');
+
+  const config = {
+    variant: editorState.variant,
+    board: editorState.board,
+    turn: editorState.turn,
+    castling: editorState.castling,
+    pockets: editorState.pockets
+  };
+
+  setupConfig.variant = editorState.variant;
+  setupConfig.customState = config;
+  editorState.active = false;
+  editorSelectedSq = null;
+  editorState.selectedTool = null;
+  createGameRoom();
+  return true;
+}
+
 function initUI() {
   cacheDom();
 
@@ -6306,25 +7039,120 @@ function initUI() {
   });
 
   dom.cancelGameBtn.addEventListener('click', () => {
-    const savedName = net.myName;
-    cleanupNetworkSession();
-    net.myName = savedName;
-    setGameFeedback('');
-    gameState = createInitialState(setupConfig.variant);
-    viewPly = 0;
-    renderAll();
+    goHome(true);
   });
 
   dom.leaveGameBtn.addEventListener('click', () => {
-    const savedName = net.myName;
-    cleanupNetworkSession();
-    net.myName = savedName;
-    setGameFeedback('');
-    boardFlipped = false;
-    gameState = createInitialState(setupConfig.variant);
-    viewPly = 0;
-    renderAll();
+    goHome();
   });
+
+  if (dom.brandHomeBtn) dom.brandHomeBtn.addEventListener('click', () => goHome());
+  if (dom.desktopHomeBtn) dom.desktopHomeBtn.addEventListener('click', () => goHome());
+  if (dom.mobileBrandHomeBtn) dom.mobileBrandHomeBtn.addEventListener('click', () => goHome());
+  if (dom.mobileHomeBtn) dom.mobileHomeBtn.addEventListener('click', () => goHome());
+  if (dom.mobLeaveBtn) dom.mobLeaveBtn.addEventListener('click', () => goHome());
+  if (dom.cancelJoinBtn) dom.cancelJoinBtn.addEventListener('click', cancelJoin);
+
+  if (dom.customPositionBtn) dom.customPositionBtn.addEventListener('click', openBoardEditor);
+  if (dom.mobCustomPositionBtn) dom.mobCustomPositionBtn.addEventListener('click', openBoardEditor);
+  if (dom.editorBackBtn) dom.editorBackBtn.addEventListener('click', closeBoardEditor);
+
+  if (dom.editorTurnWhite) {
+    dom.editorTurnWhite.addEventListener('click', () => {
+      editorState.turn = 'w';
+      syncEditorPanelUI();
+    });
+  }
+  if (dom.editorTurnBlack) {
+    dom.editorTurnBlack.addEventListener('click', () => {
+      editorState.turn = 'b';
+      syncEditorPanelUI();
+    });
+  }
+
+  if (dom.editorVariantChips) {
+    dom.editorVariantChips.addEventListener('click', (e) => {
+      const chip = e.target.closest('.editor-chip');
+      if (!chip) return;
+      editorState.variant = chip.dataset.variant || 'standard';
+      syncEditorPanelUI();
+      renderAll();
+    });
+  }
+
+  if (dom.editorPalette) {
+    dom.editorPalette.addEventListener('click', (e) => {
+      const btn = e.target.closest('.palette-piece-btn');
+      if (!btn) return;
+      const piece = btn.dataset.piece;
+      editorState.selectedTool = editorState.selectedTool === piece ? null : piece;
+      syncEditorPanelUI();
+    });
+  }
+
+  if (dom.editorEraseTool) {
+    dom.editorEraseTool.addEventListener('click', () => {
+      editorState.selectedTool = editorState.selectedTool === 'erase' ? null : 'erase';
+      syncEditorPanelUI();
+    });
+  }
+
+  if (dom.editorCastlingWk) {
+    dom.editorCastlingWk.addEventListener('change', () => {
+      editorState.castling.wK = dom.editorCastlingWk.checked;
+    });
+  }
+  if (dom.editorCastlingWq) {
+    dom.editorCastlingWq.addEventListener('change', () => {
+      editorState.castling.wQ = dom.editorCastlingWq.checked;
+    });
+  }
+  if (dom.editorCastlingBk) {
+    dom.editorCastlingBk.addEventListener('change', () => {
+      editorState.castling.bK = dom.editorCastlingBk.checked;
+    });
+  }
+  if (dom.editorCastlingBq) {
+    dom.editorCastlingBq.addEventListener('change', () => {
+      editorState.castling.bQ = dom.editorCastlingBq.checked;
+    });
+  }
+
+  if (dom.editorClearBtn) {
+    dom.editorClearBtn.addEventListener('click', () => {
+      editorState.board = Array.from({ length: 8 }, () => Array(8).fill(null));
+      editorState.castling = { wK: false, wQ: false, bK: false, bQ: false };
+      editorState.pockets = { w: [], b: [] };
+      editorSelectedSq = null;
+      editorState.validationError = null;
+      if (dom.editorError) dom.editorError.classList.add('hidden');
+      syncEditorPanelUI();
+      renderBoard();
+    });
+  }
+
+  if (dom.editorResetBtn) {
+    dom.editorResetBtn.addEventListener('click', () => {
+      editorState.board = cloneBoard(INITIAL_BOARD);
+      editorState.turn = 'w';
+      editorState.castling = { wK: true, wQ: true, bK: true, bQ: true };
+      editorState.pockets = { w: [], b: [] };
+      editorSelectedSq = null;
+      editorState.validationError = null;
+      if (dom.editorError) dom.editorError.classList.add('hidden');
+      syncEditorPanelUI();
+      renderBoard();
+    });
+  }
+
+  if (dom.editorPlayLocalBtn) {
+    dom.editorPlayLocalBtn.addEventListener('click', startLocalGameFromEditor);
+  }
+  if (dom.editorPlayOnlineBtn) {
+    dom.editorPlayOnlineBtn.addEventListener('click', startOnlineGameFromEditor);
+  }
+
+  initEditorPaletteIcons();
 
   // Replay Navigation Buttons + PGN Copy
   dom.navFirstBtn.addEventListener('click', () => stepHistoryTo(0));
@@ -6352,9 +7180,13 @@ function initUI() {
   // Footer & Mobile Dock Action Controls
   const resetLocalBoard = () => {
     if (net.mode === 'online') return;
-    const currentVariant = gameState.variant || setupConfig.variant || 'standard';
     clearBoardTransientUI();
-    gameState = createInitialState(currentVariant);
+    if (setupConfig.customState) {
+      gameState = createCustomState(setupConfig.customState);
+    } else {
+      const currentVariant = gameState.variant || setupConfig.variant || 'standard';
+      gameState = createInitialState(currentVariant);
+    }
     viewPly = 0;
     renderAll();
   };
@@ -6545,6 +7377,10 @@ if (typeof module !== 'undefined' && module.exports) {
     checkSecretQueenPinInteraction,
     revealSecretQueen,
     assignSecretQueen,
-    isStandardPawnMove
+    isStandardPawnMove,
+    createCustomState,
+    validateCustomPosition,
+    goHome,
+    editorState
   };
 }

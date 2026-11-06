@@ -43,16 +43,22 @@
     <symbol id="icon-share" viewBox="0 0 24 24">
       <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13"/>
     </symbol>
+    <symbol id="icon-home" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1V9.5z"/>
+    </symbol>
+    <symbol id="icon-trash" viewBox="0 0 24 24">
+      <path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" d="M3 6h18m-2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-6 5v6m4-6v6"/>
+    </symbol>
   </svg>
 
   <main class="layout">
     <!-- Mobile Compact Top Header (Shown on Phones/Tablets <= 900px) -->
     <header class="mobile-topbar" id="mobile-topbar" aria-label="Mobile top bar">
       <div class="mobile-brand-group">
-        <div class="brand">
+        <button type="button" class="brand brand-btn" id="mobile-brand-home-btn" title="Home / Main Board">
           <span class="brand-board-icon" aria-hidden="true"></span>
           <span class="brand-title">Chess</span>
-        </div>
+        </button>
         <button type="button" class="mobile-variant-pill" id="mobile-variant-pill" data-variant="standard" title="Switch or view chess variant">
           <svg class="variant-glyph" id="mobile-variant-pill-icon" aria-hidden="true">
             <use id="mobile-variant-pill-use" href="#icon-variant-standard"></use>
@@ -62,6 +68,9 @@
       </div>
 
       <div class="header-tools">
+        <button type="button" class="icon-btn" id="mobile-home-btn" title="Home / Main Menu" aria-label="Home">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-home"></use></svg>
+        </button>
         <div class="theme-picker" role="group" aria-label="Board theme">
           <button type="button" class="theme-dot theme-green active" data-theme="green" title="Classic Green"></button>
           <button type="button" class="theme-dot theme-brown" data-theme="brown" title="Wood Brown"></button>
@@ -175,12 +184,14 @@
 
           <div class="mobile-main-actions" id="mob-local-actions">
             <button type="button" class="btn btn-secondary btn-mob" id="mob-reset-btn">Reset</button>
+            <button type="button" class="btn btn-secondary btn-mob" id="mob-custom-position-btn" title="Custom Board Editor">Custom</button>
             <button type="button" class="btn btn-primary btn-mob" id="mob-play-friend-btn">Play Friend</button>
           </div>
 
           <div class="mobile-main-actions hidden" id="mob-online-actions">
             <button type="button" class="btn btn-secondary btn-mob" id="mob-draw-btn">Draw</button>
             <button type="button" class="btn btn-secondary btn-mob" id="mob-resign-btn">Resign</button>
+            <button type="button" class="btn btn-secondary btn-mob" id="mob-leave-btn">Leave</button>
             <button type="button" class="btn btn-primary btn-mob" id="mob-rematch-btn" disabled>Rematch</button>
           </div>
         </div>
@@ -190,11 +201,14 @@
     <!-- Right Column: Game Setup, Variants, Clocks, Status, Replayable Move History & Actions -->
     <aside class="sidebar" id="sidebar" data-mobile-tab="play" aria-label="Game controls and move history">
       <header class="sidebar-header">
-        <div class="brand">
+        <button type="button" class="brand brand-btn" id="brand-home-btn" title="Home / Main Board">
           <span class="brand-board-icon" aria-hidden="true"></span>
           <h1 class="brand-title">Chess</h1>
-        </div>
+        </button>
         <div class="header-tools">
+          <button type="button" class="icon-btn" id="desktop-home-btn" title="Home / Main Menu" aria-label="Home">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-home"></use></svg>
+          </button>
           <div class="theme-picker" role="group" aria-label="Board theme">
             <button type="button" class="theme-dot theme-green active" data-theme="green" title="Classic Green"></button>
             <button type="button" class="theme-dot theme-brown" data-theme="brown" title="Wood Brown"></button>
@@ -261,6 +275,9 @@
             </div>
             <button type="submit" class="btn btn-secondary" id="join-game-btn">Join</button>
           </form>
+          <button type="button" class="btn btn-subtle btn-block hidden" id="cancel-join-btn">
+            Cancel Connecting
+          </button>
         </div>
 
         <!-- View 2: Match Setup (Variant Cards, Time Control & Side Selection) -->
@@ -398,6 +415,123 @@
           </div>
         </div>
 
+        <!-- View 5: Custom Position / Board Editor -->
+        <div id="game-editor" class="hidden">
+          <div class="setup-top-row">
+            <span class="setup-heading">Custom Board Editor</span>
+            <button type="button" class="link-btn" id="editor-back-btn">Back</button>
+          </div>
+
+          <div class="editor-error hidden" id="editor-error" role="alert"></div>
+
+          <!-- Piece Palette -->
+          <div class="editor-palette" id="editor-palette">
+            <div class="palette-group">
+              <span class="palette-label">White pieces:</span>
+              <div class="palette-row">
+                <button type="button" class="palette-piece-btn" data-piece="wk" title="White King"></button>
+                <button type="button" class="palette-piece-btn" data-piece="wq" title="White Queen"></button>
+                <button type="button" class="palette-piece-btn" data-piece="wr" title="White Rook"></button>
+                <button type="button" class="palette-piece-btn" data-piece="wb" title="White Bishop"></button>
+                <button type="button" class="palette-piece-btn" data-piece="wn" title="White Knight"></button>
+                <button type="button" class="palette-piece-btn" data-piece="wp" title="White Pawn"></button>
+              </div>
+            </div>
+
+            <div class="palette-group">
+              <span class="palette-label">Black pieces:</span>
+              <div class="palette-row">
+                <button type="button" class="palette-piece-btn" data-piece="bk" title="Black King"></button>
+                <button type="button" class="palette-piece-btn" data-piece="bq" title="Black Queen"></button>
+                <button type="button" class="palette-piece-btn" data-piece="br" title="Black Rook"></button>
+                <button type="button" class="palette-piece-btn" data-piece="bb" title="Black Bishop"></button>
+                <button type="button" class="palette-piece-btn" data-piece="bn" title="Black Knight"></button>
+                <button type="button" class="palette-piece-btn" data-piece="bp" title="Black Pawn"></button>
+              </div>
+            </div>
+
+            <div class="palette-tools-row">
+              <button type="button" class="palette-tool-btn" data-tool="erase" id="editor-erase-tool" title="Click squares to delete pieces">
+                <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-trash"></use></svg>
+                <span>Trash Tool</span>
+              </button>
+              <span class="palette-hint">Tap piece then square, drag to move, or right-click to delete</span>
+            </div>
+          </div>
+
+          <!-- Turn to Move -->
+          <div class="editor-section">
+            <span class="editor-label">Turn to Move:</span>
+            <div class="editor-turn-group">
+              <button type="button" class="editor-toggle-btn active" id="editor-turn-white" data-turn="w">White to move</button>
+              <button type="button" class="editor-toggle-btn" id="editor-turn-black" data-turn="b">Black to move</button>
+            </div>
+          </div>
+
+          <!-- Variant Selection -->
+          <div class="editor-section">
+            <span class="editor-label">Variant:</span>
+            <div class="editor-variant-chips" id="editor-variant-chips">
+              <button type="button" class="editor-chip active" data-variant="standard">Standard</button>
+              <button type="button" class="editor-chip" data-variant="crazyhouse">Crazyhouse</button>
+              <button type="button" class="editor-chip" data-variant="cannibal">Cannibal</button>
+              <button type="button" class="editor-chip" data-variant="fog">Fog of War</button>
+              <button type="button" class="editor-chip" data-variant="secret">Secret Queen</button>
+            </div>
+          </div>
+
+          <!-- Crazyhouse Pockets Section (only visible for Crazyhouse) -->
+          <div class="editor-pockets-section hidden" id="editor-pockets-section">
+            <div class="pocket-editor-group">
+              <span class="pocket-editor-title">White Pocket:</span>
+              <div class="pocket-editor-chips" id="editor-white-pocket"></div>
+            </div>
+            <div class="pocket-editor-group">
+              <span class="pocket-editor-title">Black Pocket:</span>
+              <div class="pocket-editor-chips" id="editor-black-pocket"></div>
+            </div>
+          </div>
+
+          <!-- Castling Rights -->
+          <div class="editor-section">
+            <span class="editor-label">Castling Rights:</span>
+            <div class="editor-castling-grid">
+              <label class="castling-toggle-label">
+                <input type="checkbox" id="editor-castling-wk" checked>
+                <span>White O-O</span>
+              </label>
+              <label class="castling-toggle-label">
+                <input type="checkbox" id="editor-castling-wq" checked>
+                <span>White O-O-O</span>
+              </label>
+              <label class="castling-toggle-label">
+                <input type="checkbox" id="editor-castling-bk" checked>
+                <span>Black O-O</span>
+              </label>
+              <label class="castling-toggle-label">
+                <input type="checkbox" id="editor-castling-bq" checked>
+                <span>Black O-O-O</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Quick Board Setup Utilities -->
+          <div class="editor-actions-row">
+            <button type="button" class="btn btn-secondary btn-sm" id="editor-clear-btn">Clear Board</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="editor-reset-btn">Starting Position</button>
+          </div>
+
+          <!-- Play Actions -->
+          <div class="editor-play-group">
+            <button type="button" class="btn btn-primary btn-block btn-lg-touch" id="editor-play-local-btn">
+              Play Locally from Position
+            </button>
+            <button type="button" class="btn btn-secondary btn-block" id="editor-play-online-btn">
+              Create Online Game from Position
+            </button>
+          </div>
+        </div>
+
         <p class="game-feedback hidden" id="game-feedback" role="status"></p>
       </section>
 
@@ -519,6 +653,7 @@
         <div class="controls-row" id="local-controls">
           <button type="button" class="btn btn-secondary" id="reset-local-btn">Reset Board</button>
           <button type="button" class="btn btn-secondary" id="flip-board-btn">Flip Board</button>
+          <button type="button" class="btn btn-secondary" id="custom-position-btn" title="Set up custom board position">Custom Board</button>
         </div>
 
         <div class="controls-row hidden" id="online-controls">
