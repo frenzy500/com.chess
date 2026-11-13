@@ -2397,6 +2397,10 @@ const net = {
   myName: 'Guest',
   peerName: 'Opponent',
   roomLocked: false,
+  guestClientId: null,
+  pendingClaimConn: null,
+  pendingClaimAt: 0,
+  skipCloseNotify: false,
   peer: null,
   conn: null,
   remotePeerId: null,
@@ -3265,6 +3269,7 @@ function onHostGuestChannelReady(isReconnect = false) {
 
 function handleDecodedRelayEnvelope(srcId, env, via) {
   if (!env || typeof env !== 'object' || !env.__chessRelay) return;
+  if (env.targetClientId && env.targetClientId !== net.localClientId) return;
 
   if (env.kind === 'chunk') {
     if (typeof env.id !== 'string' || typeof env.chunk !== 'string') return;
@@ -3298,24 +3303,62 @@ function handleDecodedRelayEnvelope(srcId, env, via) {
 
   if (env.kind === 'open') {
     if (net.role !== 'host') return;
-    const isSamePeer =
-      (via === 'relay' && (!net.remotePeerId || net.remotePeerId === srcId)) ||
-      (via === 'bc' && (!net.bcPeerId || net.bcPeerId === srcId));
-    const isGameActive =
-      net.mode === 'online' &&
-      (gameState.status === 'playing' || gameState.status === 'secret_pick');
-    const canAcceptReconnect = isGameActive && (opponentDisconnected || Boolean(env.reconnect) || isSamePeer);
+    const incomingClientId =
+      (typeof env.clientId === 'string' && env.clientId) ||
+      (typeof env.srcClientId === 'string' && env.srcClientId) ||
+      null;
+    const sameLockedClient = Boolean(
+      net.guestClientId && incomingClientId && net.guestClientId === incomingClientId
+    );
+    const legacySameTransportPeer = Boolean(
+      !net.guestClientId &&
+        !incomingClientId &&
+        ((via === 'relay' && net.remotePeerId && net.remotePeerId === srcId) ||
+          (via === 'bc' && net.bcPeerId && net.bcPeerId === srcId))
+    );
+    const isClaimedSameGuest = sameLockedClient || legacySameTransportPeer;
 
-    if (net.roomLocked && !canAcceptReconnect && net.mode !== 'waiting' && !isSamePeer) {
+    const isWaitingAndFree =
+      net.mode === 'waiting' &&
+      !net.roomLocked &&
+      !net.guestClientId &&
+      !net.pendingClaimConn;
+    const isStalePendingClaim = Boolean(
+      net.mode === 'waiting' &&
+        !net.guestClientId &&
+        net.pendingClaimConn &&
+        !net.pendingClaimConn.open &&
+        Date.now() - net.pendingClaimAt > 6000
+    );
+    const isOnlineMatch = net.mode === 'online';
+
+    const canEnter =
+      isWaitingAndFree ||
+      isStalePendingClaim ||
+      (isClaimedSameGuest && (isOnlineMatch || net.mode === 'waiting'));
+
+    if (!canEnter) {
       const lockEnv = {
         __chessRelay: true,
         kind: 'pkt',
         pktId: net.localClientId + ':' + ++net.txSeq,
+        targetClientId: incomingClientId || undefined,
         data: { type: 'room_locked' }
       };
       if (via === 'relay') sendRawSignalingEnvelope(srcId, lockEnv);
       else if (via === 'bc') sendViaBroadcastChannel(lockEnv);
       return;
+    }
+
+    if (incomingClientId && !net.guestClientId) {
+      net.guestClientId = incomingClientId;
+    }
+    net.roomLocked = true;
+    if (isStalePendingClaim && net.pendingClaimConn) {
+      try {
+        net.pendingClaimConn.close();
+      } catch (_) {}
+      net.pendingClaimConn = null;
     }
 
     if (via === 'relay') {
@@ -3332,6 +3375,7 @@ function handleDecodedRelayEnvelope(srcId, env, via) {
     const ackEnv = {
       __chessRelay: true,
       kind: 'open_ack',
+      targetClientId: incomingClientId || undefined,
       hostName: net.myName,
       matchId: net.currentMatchId
     };
@@ -3363,13 +3407,18 @@ function handleDecodedRelayEnvelope(srcId, env, via) {
     sendPacket(net.conn, {
       type: 'hello',
       name: net.myName,
+      clientId: net.localClientId,
       reconnect: net.mode === 'online'
     });
     return;
   }
 
   if (env.kind === 'close') {
+    const matchesClient = Boolean(
+      net.guestClientId && env.srcClientId && env.srcClientId === net.guestClientId
+    );
     const matchesRemote =
+      matchesClient ||
       (via === 'relay' && srcId === net.remotePeerId) ||
       (via === 'bc' && srcId === net.bcPeerId);
     if (!matchesRemote) return;
@@ -3383,11 +3432,20 @@ function handleDecodedRelayEnvelope(srcId, env, via) {
 
   if (env.kind === 'pkt' && env.data) {
     if (net.role === 'host') {
-      const isKnownPeer =
-        (via === 'relay' && (!net.remotePeerId || net.remotePeerId === srcId)) ||
-        (via === 'bc' && (!net.bcPeerId || net.bcPeerId === srcId)) ||
-        opponentDisconnected;
-      if (!isKnownPeer && net.roomLocked) return;
+      const pktClientId =
+        (typeof env.srcClientId === 'string' && env.srcClientId) ||
+        (typeof env.data.clientId === 'string' && env.data.clientId) ||
+        null;
+      if (net.roomLocked && net.guestClientId && pktClientId && pktClientId !== net.guestClientId) {
+        return;
+      }
+      const isKnownTransport =
+        (via === 'relay' && net.remotePeerId === srcId) ||
+        (via === 'bc' && net.bcPeerId === srcId) ||
+        (net.guestClientId && pktClientId === net.guestClientId);
+      if (net.roomLocked && !isKnownTransport && (!net.guestClientId || pktClientId !== net.guestClientId)) {
+        return;
+      }
     }
     if (via === 'relay') {
       net.remotePeerId = net.remotePeerId || srcId;
@@ -3810,6 +3868,7 @@ function handleGuestIncomingData(data) {
   }
 
   if (data.type === 'room_locked') {
+    net.skipCloseNotify = true;
     cleanupNetworkSession();
     setGameFeedback('That game is already full (2/2 players).');
     renderAll();
@@ -4007,13 +4066,13 @@ function cleanupNetworkSession() {
   guestReconnectAttempts = 0;
   clearGuestJoinTimers();
 
-  if (net.remotePeerId && hasActiveSignalingSocket(net.peer)) {
+  if (!net.skipCloseNotify && net.remotePeerId && hasActiveSignalingSocket(net.peer)) {
     sendRawSignalingEnvelope(net.remotePeerId, {
       __chessRelay: true,
       kind: 'close'
     });
   }
-  if (net.bcChannel && net.bcOpen) {
+  if (!net.skipCloseNotify && net.bcChannel && net.bcOpen) {
     sendViaBroadcastChannel({
       __chessRelay: true,
       kind: 'close'
@@ -4025,6 +4084,14 @@ function cleanupNetworkSession() {
     } catch (_) {}
     net.bcChannel = null;
   }
+
+  if (net.pendingClaimConn && net.pendingClaimConn !== net.conn) {
+    try {
+      net.pendingClaimConn.close();
+    } catch (_) {}
+  }
+  net.pendingClaimConn = null;
+  net.pendingClaimAt = 0;
 
   if (net.conn) {
     try {
@@ -4046,6 +4113,8 @@ function cleanupNetworkSession() {
   net.relayOpen = false;
   net.bcOpen = false;
   net.bcPeerId = null;
+  net.guestClientId = null;
+  net.skipCloseNotify = false;
   net.currentMatchId = null;
   net.roomLocked = false;
   net.myRematchWanted = false;
@@ -4235,6 +4304,7 @@ function connectToHostForReconnect(peer) {
           __chessRelay: true,
           kind: 'open',
           name: net.myName,
+          clientId: net.localClientId,
           reconnect: true
         },
         peer
@@ -4245,6 +4315,7 @@ function connectToHostForReconnect(peer) {
         __chessRelay: true,
         kind: 'open',
         name: net.myName,
+        clientId: net.localClientId,
         reconnect: true
       });
     }
@@ -4254,7 +4325,9 @@ function connectToHostForReconnect(peer) {
         net.conn.close();
       } catch (_) {}
     }
-    const newConn = peer.connect(hostPeerId);
+    const newConn = peer.connect(hostPeerId, {
+      metadata: { clientId: net.localClientId, reconnect: true }
+    });
     net.conn = newConn;
 
     const onReconnected = () => {
@@ -4265,7 +4338,12 @@ function connectToHostForReconnect(peer) {
       startHeartbeat();
       setGameFeedback('Reconnected to game!');
       setTimeout(() => setGameFeedback(''), 3000);
-      sendPacket(newConn, { type: 'hello', name: net.myName, reconnect: true });
+      sendPacket(newConn, {
+        type: 'hello',
+        name: net.myName,
+        clientId: net.localClientId,
+        reconnect: true
+      });
       renderAll();
     };
 
@@ -4328,54 +4406,40 @@ function createGameRoom(retryCount = 0) {
 
   peer.on('connection', (incomingConn) => {
     const incomingPeerId = incomingConn && typeof incomingConn.peer === 'string' ? incomingConn.peer : null;
-    const isSameGuestPeer = Boolean(incomingPeerId && net.remotePeerId && incomingPeerId === net.remotePeerId);
+    const incomingClientId =
+      incomingConn &&
+      incomingConn.metadata &&
+      typeof incomingConn.metadata.clientId === 'string' &&
+      incomingConn.metadata.clientId
+        ? incomingConn.metadata.clientId
+        : null;
+
+    const isSameClient = Boolean(
+      net.guestClientId && incomingClientId && net.guestClientId === incomingClientId
+    );
+    const isSameRemotePeer = Boolean(incomingPeerId && net.remotePeerId && incomingPeerId === net.remotePeerId);
+    const isPendingPeer = Boolean(
+      incomingPeerId && net.pendingClaimConn && net.pendingClaimConn.peer === incomingPeerId
+    );
+    const isClaimedOwner = isSameClient || (!incomingClientId && (isSameRemotePeer || isPendingPeer));
+
     const isGameActive =
       net.mode === 'online' &&
       (gameState.status === 'playing' || gameState.status === 'secret_pick');
-    const isConnectionDead = !isLogicalConnOpen(net.conn) || opponentDisconnected;
+    const isStalePending = Boolean(
+      net.mode === 'waiting' &&
+        !net.guestClientId &&
+        net.pendingClaimConn &&
+        !net.pendingClaimConn.open &&
+        Date.now() - net.pendingClaimAt > 6000
+    );
+    const slotTakenByAnother = Boolean(
+      (net.roomLocked || net.pendingClaimConn || net.guestClientId || isLogicalConnOpen(net.conn)) &&
+        !isClaimedOwner &&
+        !isStalePending
+    );
 
-    // Allow re-connecting guest (or WebRTC completing after WSS Relay already started the match) to attach!
-    if ((isGameActive && isConnectionDead) || isSameGuestPeer) {
-      if (net.conn && net.conn !== incomingConn) {
-        try {
-          net.conn.close();
-        } catch (_) {}
-      }
-      net.conn = incomingConn;
-      if (incomingPeerId) net.remotePeerId = incomingPeerId;
-      opponentDisconnected = false;
-      clearOpponentDisconnectGraceTimer();
-
-      const acceptReconnect = () => {
-        if (net.conn !== incomingConn) return;
-        onHostGuestChannelReady(!isSameGuestPeer);
-      };
-
-      if (incomingConn.open) acceptReconnect();
-      else incomingConn.on('open', acceptReconnect);
-
-      incomingConn.on('data', (data) => {
-        if (net.conn === incomingConn) {
-          receiveDeduplicatedPacket(data, data && data._pktId);
-        }
-      });
-
-      incomingConn.on('close', () => {
-        if (net.conn === incomingConn && !isLogicalConnOpen(incomingConn)) {
-          handleTransientDisconnect();
-        }
-      });
-
-      incomingConn.on('error', () => {
-        if (net.conn === incomingConn && !isLogicalConnOpen(incomingConn)) {
-          handleTransientDisconnect();
-        }
-      });
-      return;
-    }
-
-    // ROOM LOCKING: Reject 3rd-party intruders if room is already active with 2 players
-    if ((net.conn !== null && net.conn.open) || net.roomLocked) {
+    if (slotTakenByAnother) {
       const rejectIntruder = () => {
         sendPacket(incomingConn, { type: 'room_locked' });
         setTimeout(() => {
@@ -4389,15 +4453,26 @@ function createGameRoom(retryCount = 0) {
       return;
     }
 
-    net.conn = incomingConn;
-    if (incomingPeerId) net.remotePeerId = incomingPeerId;
-    if (!hasActiveSignalingSocket(peer)) {
-      net.roomLocked = true;
+    if (net.conn && net.conn !== incomingConn) {
+      try {
+        net.conn.close();
+      } catch (_) {}
     }
+    net.conn = incomingConn;
+    net.pendingClaimConn = incomingConn;
+    net.pendingClaimAt = Date.now();
+    net.roomLocked = true;
+    if (incomingPeerId) net.remotePeerId = incomingPeerId;
+    if (incomingClientId && !net.guestClientId) net.guestClientId = incomingClientId;
+    opponentDisconnected = false;
+    clearOpponentDisconnectGraceTimer();
 
     const activateGuest = () => {
       if (net.conn !== incomingConn) return;
-      onHostGuestChannelReady(false);
+      if (net.pendingClaimConn === incomingConn) {
+        net.pendingClaimConn = null;
+      }
+      onHostGuestChannelReady(isGameActive);
     };
 
     if (incomingConn.open) activateGuest();
@@ -4405,31 +4480,46 @@ function createGameRoom(retryCount = 0) {
 
     incomingConn.on('data', (data) => {
       if (net.conn === incomingConn) {
+        if (
+          data &&
+          typeof data === 'object' &&
+          data.type === 'hello' &&
+          typeof data.clientId === 'string' &&
+          data.clientId
+        ) {
+          if (!net.guestClientId) {
+            net.guestClientId = data.clientId;
+          } else if (data.clientId !== net.guestClientId) {
+            sendPacket(incomingConn, { type: 'room_locked' });
+            setTimeout(() => {
+              try {
+                incomingConn.close();
+              } catch (_) {}
+            }, 150);
+            return;
+          }
+        }
         receiveDeduplicatedPacket(data, data && data._pktId);
       }
     });
 
-    incomingConn.on('close', () => {
-      if (net.conn === incomingConn && !isLogicalConnOpen(incomingConn)) {
-        if (net.mode === 'waiting') {
-          net.conn = null;
-          net.roomLocked = false;
-        } else {
-          handleTransientDisconnect();
-        }
+    const handleConnEnd = () => {
+      if (net.conn !== incomingConn || isLogicalConnOpen(incomingConn)) return;
+      if (net.pendingClaimConn === incomingConn) {
+        net.pendingClaimConn = null;
       }
-    });
+      if (net.mode === 'waiting') {
+        net.conn = null;
+        net.remotePeerId = null;
+        net.guestClientId = null;
+        net.roomLocked = false;
+      } else {
+        handleTransientDisconnect();
+      }
+    };
 
-    incomingConn.on('error', () => {
-      if (net.conn === incomingConn && !isLogicalConnOpen(incomingConn)) {
-        if (net.mode === 'waiting') {
-          net.conn = null;
-          net.roomLocked = false;
-        } else {
-          handleTransientDisconnect();
-        }
-      }
-    });
+    incomingConn.on('close', handleConnEnd);
+    incomingConn.on('error', handleConnEnd);
   });
 
   peer.on('disconnected', () => {
@@ -4489,6 +4579,7 @@ function joinGameRoom(rawCode) {
       __chessRelay: true,
       kind: 'open',
       name: net.myName,
+      clientId: net.localClientId,
       reconnect: false
     });
   }
@@ -4521,6 +4612,7 @@ function joinGameRoom(rawCode) {
             __chessRelay: true,
             kind: 'open',
             name: net.myName,
+            clientId: net.localClientId,
             reconnect: false
           },
           peer
@@ -4531,6 +4623,7 @@ function joinGameRoom(rawCode) {
           __chessRelay: true,
           kind: 'open',
           name: net.myName,
+          clientId: net.localClientId,
           reconnect: false
         });
       }
@@ -4541,11 +4634,18 @@ function joinGameRoom(rawCode) {
       net.joinRetryTimer = setInterval(attemptRelayAndHello, 1200);
     }
 
-    const conn = peer.connect(hostPeerId);
+    const conn = peer.connect(hostPeerId, {
+      metadata: { clientId: net.localClientId, reconnect: false }
+    });
     net.conn = conn;
 
     const sendHello = () => {
-      sendPacket(conn, { type: 'hello', name: net.myName });
+      sendPacket(conn, {
+        type: 'hello',
+        name: net.myName,
+        clientId: net.localClientId,
+        reconnect: false
+      });
       startHeartbeat();
     };
 
@@ -8366,8 +8466,24 @@ function setGameFeedback(msg) {
   }
 }
 
+function getInviteVariantSlug() {
+  const v = gameState?.variant || setupConfig?.variant || 'standard';
+  return Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v) ? v : 'standard';
+}
+
 function buildInviteUrl(code) {
   const url = new URL(window.location.href);
+  const slug = getInviteVariantSlug();
+  let basePath = url.pathname || '/';
+  if (/\/invite\/[^/]*\.html$/i.test(basePath)) {
+    basePath = basePath.replace(/\/invite\/[^/]*\.html$/i, '/');
+  } else if (/\/index\.html$/i.test(basePath)) {
+    basePath = basePath.slice(0, -'index.html'.length);
+  } else if (!basePath.endsWith('/')) {
+    const lastSlash = basePath.lastIndexOf('/');
+    basePath = lastSlash >= 0 ? basePath.slice(0, lastSlash + 1) : '/';
+  }
+  url.pathname = `${basePath}invite/${slug}.html`;
   url.search = '';
   url.hash = '';
   url.searchParams.set('game', code);
@@ -8705,6 +8821,23 @@ function toggleSoundSetting() {
 function checkAutoJoinFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const rawCode = params.get('game') || params.get('code');
+  const rawVariant = params.get('variant');
+
+  if (rawVariant && Object.prototype.hasOwnProperty.call(VARIANT_DEFS, rawVariant) && !rawCode) {
+    try {
+      const cleanUrl = window.location.pathname + window.location.hash;
+      window.history.replaceState({}, document.title, cleanUrl);
+    } catch (_) {}
+    setupConfig.variant = rawVariant;
+    setupConfig.customState = null;
+    clearBoardTransientUI();
+    gameState = createInitialState(rawVariant);
+    viewPly = 0;
+    syncSetupPanelUI();
+    renderAll();
+    return;
+  }
+
   if (!rawCode) return;
 
   try {

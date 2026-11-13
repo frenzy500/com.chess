@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#4fd1c5">
+  <title>Join Dice Chess Match — Instant 1v1</title>
+  <meta name="description" content="Roll two dice to dictate which pieces can move — roll doubles for a wild turn and capture the King. Click to join live.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Chess">
+  <meta property="og:url" content="https://frenzy500.github.io/com.chess/invite/dice.html">
+  <meta property="og:title" content="You're Invited to Play Dice Chess">
+  <meta property="og:description" content="Roll two dice to dictate which pieces can move — roll doubles for a wild turn and capture the King. Click to join live.">
+  <meta property="og:image" content="https://frenzy500.github.io/com.chess/assets/og/dice.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Dice Chess — Roll to Move Variant">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="You're Invited to Play Dice Chess">
+  <meta name="twitter:description" content="Roll two dice to dictate which pieces can move — roll doubles for a wild turn and capture the King. Click to join live.">
+  <meta name="twitter:image" content="https://frenzy500.github.io/com.chess/assets/og/dice.jpg">
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search);
+      var raw = params.get("game") || params.get("code") || "";
+      var clean = raw.replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+      var target = /^[A-Z0-9]{5}$/.test(clean)
+        ? "../?game=" + encodeURIComponent(clean)
+        : "../?variant=dice";
+      document.addEventListener("DOMContentLoaded", function () {
+        var link = document.getElementById("join-link");
+        if (link) link.setAttribute("href", target);
+      });
+      window.location.replace(target);
+    })();
+  </script>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #262522;
+      color: #f4f2ed;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a {
+      color: #4fd1c5;
+      font-weight: 600;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <p>Opening Dice Chess match… <a id="join-link" href="../?variant=dice">Join now</a></p>
+</body>
+</html>
