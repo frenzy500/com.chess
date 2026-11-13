@@ -7,7 +7,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>Chess — Instant Multiplayer Chess</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23739552'/%3E%3Crect x='4' y='4' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3Crect x='16' y='16' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=20261113c">
+  <link rel="stylesheet" href="style.css?v=20261113d">
 </head>
 <body>
   <!-- Inline Vector Icon Sprite (Font Awesome 6 Free Solid CC-BY-4.0 & Game-Icons CC-BY-3.0) -->
@@ -149,25 +149,25 @@
       <div class="dice-bar hidden" id="dice-bar" role="region" aria-label="Dice Chess roll">
         <div class="dice-pair" id="dice-pair">
           <button type="button" class="die-card" id="die-card-1" title="Select rolled piece 1">
-            <svg class="die-face-svg" id="die-svg-1" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            <svg class="die-face-svg" id="die-svg-1" viewBox="0 0 40 40" aria-hidden="true"></svg>
             <img class="die-piece-img" id="die-piece-img-1" alt="" draggable="false">
             <span class="die-piece-label" id="die-label-1">Pawn</span>
           </button>
           <button type="button" class="die-card" id="die-card-2" title="Select rolled piece 2">
-            <svg class="die-face-svg" id="die-svg-2" viewBox="0 0 100 100" aria-hidden="true"></svg>
+            <svg class="die-face-svg" id="die-svg-2" viewBox="0 0 40 40" aria-hidden="true"></svg>
             <img class="die-piece-img" id="die-piece-img-2" alt="" draggable="false">
             <span class="die-piece-label" id="die-label-2">Knight</span>
           </button>
         </div>
         <div class="dice-info" id="dice-info">
           <div class="dice-badges" id="dice-badges">
-            <span class="dice-badge dice-badge-doubles hidden" id="dice-doubles-badge">Doubles • Wild</span>
-            <span class="dice-badge dice-badge-castle hidden" id="dice-castle-badge">O-O Legal</span>
-            <span class="dice-badge dice-badge-skip hidden" id="dice-skip-badge">Turn Skipped</span>
+            <span class="dice-badge dice-badge-doubles hidden" id="dice-doubles-badge">Wild • Any Piece</span>
+            <span class="dice-badge dice-badge-castle hidden" id="dice-castle-badge">Castle OK</span>
+            <span class="dice-badge dice-badge-skip hidden" id="dice-skip-badge">No Legal Moves</span>
           </div>
           <span class="dice-prompt-text" id="dice-prompt-text">Move a Pawn or Knight</span>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm hidden" id="dice-skip-btn">Skip Turn</button>
+        <button type="button" class="btn btn-secondary btn-sm hidden" id="dice-skip-btn">Pass</button>
       </div>
 
       <div class="player-bar" id="bottom-player-bar">
@@ -323,63 +323,50 @@
               <span class="variant-icon-badge" data-variant="standard" aria-hidden="true">
                 <svg class="variant-glyph"><use href="#icon-variant-standard"></use></svg>
               </span>
-              <span class="variant-card-copy">
-                <span class="variant-card-title">Standard</span>
-                <span class="variant-card-sub">Classic rules</span>
-              </span>
+              <span class="variant-card-title">Standard</span>
+              <span class="variant-info-dot" data-variant-info="standard" role="button" tabindex="0" aria-label="About Standard rules">i</span>
             </button>
 
             <button type="button" class="variant-btn" data-variant="cannibal">
               <span class="variant-icon-badge" data-variant="cannibal" aria-hidden="true">
                 <svg class="variant-glyph"><use href="#icon-variant-cannibal"></use></svg>
               </span>
-              <span class="variant-card-copy">
-                <span class="variant-card-title">Cannibal</span>
-                <span class="variant-card-sub">Eat own pieces</span>
-              </span>
+              <span class="variant-card-title">Cannibal</span>
+              <span class="variant-info-dot" data-variant-info="cannibal" role="button" tabindex="0" aria-label="About Cannibal Chess rules">i</span>
             </button>
 
             <button type="button" class="variant-btn" data-variant="crazyhouse">
               <span class="variant-icon-badge" data-variant="crazyhouse" aria-hidden="true">
                 <svg class="variant-glyph"><use href="#icon-variant-crazyhouse"></use></svg>
               </span>
-              <span class="variant-card-copy">
-                <span class="variant-card-title">Crazyhouse</span>
-                <span class="variant-card-sub">Pocket drops</span>
-              </span>
+              <span class="variant-card-title">Crazyhouse</span>
+              <span class="variant-info-dot" data-variant-info="crazyhouse" role="button" tabindex="0" aria-label="About Crazyhouse rules">i</span>
             </button>
 
             <button type="button" class="variant-btn" data-variant="fog">
               <span class="variant-icon-badge" data-variant="fog" aria-hidden="true">
                 <svg class="variant-glyph"><use href="#icon-variant-fog"></use></svg>
               </span>
-              <span class="variant-card-copy">
-                <span class="variant-card-title">Fog of War</span>
-                <span class="variant-card-sub">Hidden board</span>
-              </span>
+              <span class="variant-card-title">Fog of War</span>
+              <span class="variant-info-dot" data-variant-info="fog" role="button" tabindex="0" aria-label="About Fog of War rules">i</span>
             </button>
 
             <button type="button" class="variant-btn" data-variant="secret">
               <span class="variant-icon-badge" data-variant="secret" aria-hidden="true">
                 <svg class="variant-glyph"><use href="#icon-variant-secret"></use></svg>
               </span>
-              <span class="variant-card-copy">
-                <span class="variant-card-title">Secret Queen</span>
-                <span class="variant-card-sub">Hidden Queen pawn</span>
-              </span>
+              <span class="variant-card-title">Secret Queen</span>
+              <span class="variant-info-dot" data-variant-info="secret" role="button" tabindex="0" aria-label="About Secret Queen Chess rules">i</span>
             </button>
 
             <button type="button" class="variant-btn" data-variant="dice">
               <span class="variant-icon-badge" data-variant="dice" aria-hidden="true">
                 <svg class="variant-glyph"><use href="#icon-variant-dice"></use></svg>
               </span>
-              <span class="variant-card-copy">
-                <span class="variant-card-title">Dice Chess</span>
-                <span class="variant-card-sub">Roll 2 dice • Wild doubles</span>
-              </span>
+              <span class="variant-card-title">Dice Chess</span>
+              <span class="variant-info-dot" data-variant-info="dice" role="button" tabindex="0" aria-label="About Dice Chess rules">i</span>
             </button>
           </div>
-          <p class="variant-desc" id="setup-variant-desc">Classic chess rules.</p>
 
           <div class="preset-row" id="preset-row">
             <button type="button" class="preset-chip" data-min="1" data-inc="1">1+1</button>
@@ -588,63 +575,50 @@
             <span class="variant-icon-badge" data-variant="standard" aria-hidden="true">
               <svg class="variant-glyph"><use href="#icon-variant-standard"></use></svg>
             </span>
-            <span class="variant-card-copy">
-              <span class="variant-card-title">Standard</span>
-              <span class="variant-card-sub">Classic chess rules</span>
-            </span>
+            <span class="variant-card-title">Standard</span>
+            <span class="variant-info-dot" data-variant-info="standard" role="button" tabindex="0" aria-label="About Standard rules">i</span>
           </button>
 
           <button type="button" class="variant-btn" data-variant="cannibal">
             <span class="variant-icon-badge" data-variant="cannibal" aria-hidden="true">
               <svg class="variant-glyph"><use href="#icon-variant-cannibal"></use></svg>
             </span>
-            <span class="variant-card-copy">
-              <span class="variant-card-title">Cannibal Chess</span>
-              <span class="variant-card-sub">Capture own non-King pieces</span>
-            </span>
+            <span class="variant-card-title">Cannibal Chess</span>
+            <span class="variant-info-dot" data-variant-info="cannibal" role="button" tabindex="0" aria-label="About Cannibal Chess rules">i</span>
           </button>
 
           <button type="button" class="variant-btn" data-variant="crazyhouse">
             <span class="variant-icon-badge" data-variant="crazyhouse" aria-hidden="true">
               <svg class="variant-glyph"><use href="#icon-variant-crazyhouse"></use></svg>
             </span>
-            <span class="variant-card-copy">
-              <span class="variant-card-title">Crazyhouse</span>
-              <span class="variant-card-sub">Drop captured enemy pieces</span>
-            </span>
+            <span class="variant-card-title">Crazyhouse</span>
+            <span class="variant-info-dot" data-variant-info="crazyhouse" role="button" tabindex="0" aria-label="About Crazyhouse rules">i</span>
           </button>
 
           <button type="button" class="variant-btn" data-variant="fog">
             <span class="variant-icon-badge" data-variant="fog" aria-hidden="true">
               <svg class="variant-glyph"><use href="#icon-variant-fog"></use></svg>
             </span>
-            <span class="variant-card-copy">
-              <span class="variant-card-title">Fog of War</span>
-              <span class="variant-card-sub">Hidden enemy — capture King</span>
-            </span>
+            <span class="variant-card-title">Fog of War</span>
+            <span class="variant-info-dot" data-variant-info="fog" role="button" tabindex="0" aria-label="About Fog of War rules">i</span>
           </button>
 
           <button type="button" class="variant-btn" data-variant="secret">
             <span class="variant-icon-badge" data-variant="secret" aria-hidden="true">
               <svg class="variant-glyph"><use href="#icon-variant-secret"></use></svg>
             </span>
-            <span class="variant-card-copy">
-              <span class="variant-card-title">Secret Queen</span>
-              <span class="variant-card-sub">Hidden Queen pawn</span>
-            </span>
+            <span class="variant-card-title">Secret Queen</span>
+            <span class="variant-info-dot" data-variant-info="secret" role="button" tabindex="0" aria-label="About Secret Queen Chess rules">i</span>
           </button>
 
           <button type="button" class="variant-btn" data-variant="dice">
             <span class="variant-icon-badge" data-variant="dice" aria-hidden="true">
               <svg class="variant-glyph"><use href="#icon-variant-dice"></use></svg>
             </span>
-            <span class="variant-card-copy">
-              <span class="variant-card-title">Dice Chess</span>
-              <span class="variant-card-sub">Roll 2 dice — wild doubles</span>
-            </span>
+            <span class="variant-card-title">Dice Chess</span>
+            <span class="variant-info-dot" data-variant-info="dice" role="button" tabindex="0" aria-label="About Dice Chess rules">i</span>
           </button>
         </div>
-        <p class="variant-desc mobile-variant-full-desc" id="mobile-variant-desc">Classic chess rules.</p>
       </section>
 
       <!-- Game Turn / Result Banner (Desktop Sidebar) -->
@@ -681,29 +655,35 @@
       <!-- Footer Action Buttons -->
       <footer class="controls-footer" id="controls-footer">
         <div class="local-variant-bar" id="local-variant-bar" role="group" aria-label="Local board variant">
-          <button type="button" class="local-variant-btn active" data-variant="standard" title="Classic chess rules">
+          <button type="button" class="local-variant-btn active" data-variant="standard">
             <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-standard"></use></svg>
             <span>Standard</span>
+            <span class="variant-info-dot variant-info-dot-sm" data-variant-info="standard" role="button" tabindex="0" aria-label="About Standard rules">i</span>
           </button>
-          <button type="button" class="local-variant-btn" data-variant="cannibal" title="Capture your own non-King pieces too">
+          <button type="button" class="local-variant-btn" data-variant="cannibal">
             <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-cannibal"></use></svg>
             <span>Cannibal</span>
+            <span class="variant-info-dot variant-info-dot-sm" data-variant-info="cannibal" role="button" tabindex="0" aria-label="About Cannibal Chess rules">i</span>
           </button>
-          <button type="button" class="local-variant-btn" data-variant="crazyhouse" title="Drop captured opponent pieces from your pocket">
+          <button type="button" class="local-variant-btn" data-variant="crazyhouse">
             <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-crazyhouse"></use></svg>
             <span>Crazyhouse</span>
+            <span class="variant-info-dot variant-info-dot-sm" data-variant-info="crazyhouse" role="button" tabindex="0" aria-label="About Crazyhouse rules">i</span>
           </button>
-          <button type="button" class="local-variant-btn" data-variant="fog" title="Only see your pieces and legal moves — capture the King to win">
+          <button type="button" class="local-variant-btn" data-variant="fog">
             <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-fog"></use></svg>
             <span>Fog</span>
+            <span class="variant-info-dot variant-info-dot-sm" data-variant-info="fog" role="button" tabindex="0" aria-label="About Fog of War rules">i</span>
           </button>
-          <button type="button" class="local-variant-btn" data-variant="secret" title="Designate a secret Queen disguised as a pawn until revealed">
+          <button type="button" class="local-variant-btn" data-variant="secret">
             <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-secret"></use></svg>
             <span>Secret</span>
+            <span class="variant-info-dot variant-info-dot-sm" data-variant-info="secret" role="button" tabindex="0" aria-label="About Secret Queen Chess rules">i</span>
           </button>
-          <button type="button" class="local-variant-btn" data-variant="dice" title="Roll two dice each turn — Doubles are wild">
+          <button type="button" class="local-variant-btn" data-variant="dice">
             <svg class="variant-mini-glyph" aria-hidden="true"><use href="#icon-variant-dice"></use></svg>
             <span>Dice</span>
+            <span class="variant-info-dot variant-info-dot-sm" data-variant-info="dice" role="button" tabindex="0" aria-label="About Dice Chess rules">i</span>
           </button>
         </div>
         <div class="controls-row" id="local-controls">
@@ -721,6 +701,9 @@
     </aside>
   </main>
 
+  <!-- Variant Rule Info Floating Tooltip (outside sidebar so never clipped) -->
+  <div class="variant-tooltip hidden" id="variant-tooltip" role="tooltip"></div>
+
   <!-- Floating Piece Layer for Smooth Drag-and-Drop -->
   <img id="drag-ghost" class="drag-ghost hidden" alt="" draggable="false">
 
@@ -729,6 +712,6 @@
     src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"
     onerror="var s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';document.head.appendChild(s);"
   ></script>
-  <script src="game.js?v=20261113c"></script>
+  <script src="game.js?v=20261113d"></script>
 </body>
 </html>

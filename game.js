@@ -47,7 +47,7 @@ const VARIANT_DEFS = {
   standard: {
     name: 'Standard',
     shortName: 'Standard',
-    description: 'Classic chess rules.',
+    description: 'Classic chess rules. Checkmate the opponent\'s King to win.',
     allowSelfCapture: false,
     allowDrops: false,
     fogOfWar: false,
@@ -56,7 +56,7 @@ const VARIANT_DEFS = {
   cannibal: {
     name: 'Cannibal Chess',
     shortName: 'Cannibal',
-    description: 'Capture your own non-King pieces too (pawns capture diagonally).',
+    description: 'You can capture your own non-King pieces too. Pawns still capture forward diagonally.',
     allowSelfCapture: true,
     allowDrops: false,
     fogOfWar: false,
@@ -65,7 +65,7 @@ const VARIANT_DEFS = {
   crazyhouse: {
     name: 'Crazyhouse',
     shortName: 'Crazyhouse',
-    description: 'Captured enemy pieces join your pocket and can be dropped on empty squares.',
+    description: 'Captured enemy pieces join your pocket and can be dropped onto any empty square on your turn.',
     allowSelfCapture: false,
     allowDrops: true,
     fogOfWar: false,
@@ -74,7 +74,7 @@ const VARIANT_DEFS = {
   fog: {
     name: 'Fog of War',
     shortName: 'Fog of War',
-    description: 'Only see your pieces and legal moves. No check — capture the King to win!',
+    description: 'Only see squares your pieces occupy or can legally move to. No check — capture the King to win!',
     allowSelfCapture: false,
     allowDrops: false,
     fogOfWar: true,
@@ -83,7 +83,7 @@ const VARIANT_DEFS = {
   secret: {
     name: 'Secret Queen Chess',
     shortName: 'Secret Queen',
-    description: 'Each player secretly designates a pawn as a Queen. Revealed on non-pawn moves, pins, or checks.',
+    description: 'Each side secretly hides a Queen inside a starting pawn. Revealed on non-pawn moves, pins, or checks.',
     allowSelfCapture: false,
     allowDrops: false,
     fogOfWar: false,
@@ -93,7 +93,7 @@ const VARIANT_DEFS = {
   dice: {
     name: 'Dice Chess',
     shortName: 'Dice Chess',
-    description: 'Roll two dice each turn (1=P, 2=N, 3=B, 4=R, 5=Q, 6=K). Doubles move any piece on the board. Capture the King to win!',
+    description: 'Roll 2 dice each turn (1=P, 2=N, 3=B, 4=R, 5=Q, 6=K). Doubles are wild — move any piece on the board. Capture the King to win!',
     allowSelfCapture: false,
     allowDrops: false,
     fogOfWar: false,
@@ -516,6 +516,19 @@ function cloneLastMove(lm) {
 
 // Immutable frame snapshot so < / > move replay works with ANY future variant rules
 function makeHistoryFrame(state, meta = null) {
+  let fogVisible = null;
+  let fogVis = null;
+  if (getVariantDef(state).fogOfWar) {
+    if (state.fogMasked) {
+      fogVisible = Array.isArray(state.fogVisible) ? state.fogVisible.slice() : null;
+    } else {
+      fogVis = {
+        w: Array.from(computeVisibleSquares(state, 'w')),
+        b: Array.from(computeVisibleSquares(state, 'b'))
+      };
+    }
+  }
+
   return {
     board: cloneBoard(state.board),
     turn: state.turn,
@@ -545,6 +558,8 @@ function makeHistoryFrame(state, meta = null) {
         }
       : null,
     dice: cloneDiceState(state.dice),
+    fogVisible,
+    fogVis,
     meta: meta ? { ...meta } : null
   };
 }
@@ -752,6 +767,13 @@ function cloneState(state) {
           }
         : null,
       dice: cloneDiceState(f.dice),
+      fogVisible: Array.isArray(f.fogVisible) ? f.fogVisible.slice() : null,
+      fogVis: f.fogVis
+        ? {
+            w: Array.isArray(f.fogVis.w) ? f.fogVis.w.slice() : [],
+            b: Array.isArray(f.fogVis.b) ? f.fogVis.b.slice() : []
+          }
+        : null,
       meta: f.meta ? { ...f.meta } : null
     })),
     fogMasked: Boolean(state.fogMasked),
@@ -2621,14 +2643,97 @@ function serializeAuthoritativeState(state) {
         }
       : null,
     dice: cloneDiceState(state.dice),
-    historyFrames: state.historyFrames
+    historyFrames: (state.historyFrames || []).map((f) => ({
+      board: f.board,
+      turn: f.turn,
+      inCheck: Boolean(f.inCheck),
+      lastMove: f.lastMove,
+      captured: f.captured,
+      pockets: f.pockets,
+      secretQueens: f.secretQueens || null,
+      dice: cloneDiceState(f.dice),
+      meta: f.meta || null
+    }))
+  };
+}
+
+function maskFrameForFogPeer(state, frame, peerColor, vDef, overrideVisSet = null) {
+  let visSet = overrideVisSet;
+  if (!visSet) {
+    if (Array.isArray(frame?.fogVis?.[peerColor])) {
+      visSet = new Set(frame.fogVis[peerColor]);
+    } else {
+      visSet = computeVisibleSquares(
+        {
+          ...state,
+          board: frame.board,
+          turn: frame.turn
+        },
+        peerColor
+      );
+    }
+  }
+
+  const maskedBoard = [];
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    const row = [];
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      row.push(visSet.has(`${r},${c}`) ? frame.board[r][c] : null);
+    }
+    maskedBoard.push(row);
+  }
+
+  const rawLm = frame.lastMove;
+  const visFrom =
+    rawLm?.from && visSet.has(`${rawLm.from.r},${rawLm.from.c}`)
+      ? { r: rawLm.from.r, c: rawLm.from.c }
+      : null;
+  const visTo =
+    rawLm?.to && visSet.has(`${rawLm.to.r},${rawLm.to.c}`)
+      ? { r: rawLm.to.r, c: rawLm.to.c }
+      : null;
+  const maskedLastMove =
+    visFrom || visTo
+      ? {
+          from: visFrom,
+          to: visTo,
+          isDrop: Boolean(rawLm?.isDrop && visTo),
+          dropType: visTo ? rawLm?.dropType || null : null
+        }
+      : null;
+
+  const frameMeta = frame?.meta;
+  const moverIsPeer = frameMeta?.moverColor === peerColor;
+
+  return {
+    board: maskedBoard,
+    turn: frame.turn,
+    inCheck: false,
+    lastMove: maskedLastMove,
+    captured: { w: [], b: [] },
+    pockets: vDef.allowDrops
+      ? { w: (frame.pockets?.w || state.pockets?.w || []).slice(), b: (frame.pockets?.b || state.pockets?.b || []).slice() }
+      : { w: [], b: [] },
+    meta: frameMeta
+      ? {
+          moverColor: frameMeta.moverColor,
+          isCapture: Boolean(frameMeta.isCapture && (moverIsPeer || visTo)),
+          isDrop: Boolean(frameMeta.isDrop && (moverIsPeer || visTo)),
+          dropType: moverIsPeer || visTo ? frameMeta.dropType || null : null,
+          castleSide: moverIsPeer ? frameMeta.castleSide || null : null,
+          rookMove: moverIsPeer ? frameMeta.rookMove || null : null,
+          promotion: moverIsPeer ? frameMeta.promotion || null : null
+        }
+      : null,
+    fogVisible: Array.from(visSet)
   };
 }
 
 // Network-level Fog of War anti-cheat serializer:
 // While a Fog of War game is actively in progress, strips all hidden Host pieces,
-// opponent castling rights, captured counts, and opponent SAN moves before sending to Guest.
-// As soon as the game ends (status !== 'playing'), sends the full unmasked state & replay!
+// opponent castling rights, captured counts, and opponent SAN moves before sending to Guest
+// across both the live state and any replay frames. As soon as the game ends (status !== 'playing'),
+// sends the full unmasked state & replay!
 function serializeStateForPeer(state, peerColor) {
   const vDef = getVariantDef(state);
   if (!vDef.fogOfWar || state.status !== 'playing') {
@@ -2653,68 +2758,30 @@ function serializeStateForPeer(state, peerColor) {
   }
 
   const vis = computeVisibleSquares(state, peerColor);
-  const maskedBoard = [];
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    const row = [];
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      row.push(vis.has(`${r},${c}`) ? state.board[r][c] : null);
-    }
-    maskedBoard.push(row);
-  }
-
-  const rawLm = state.lastMove;
-  const visFrom =
-    rawLm?.from && vis.has(`${rawLm.from.r},${rawLm.from.c}`)
-      ? { r: rawLm.from.r, c: rawLm.from.c }
-      : null;
-  const visTo =
-    rawLm?.to && vis.has(`${rawLm.to.r},${rawLm.to.c}`)
-      ? { r: rawLm.to.r, c: rawLm.to.c }
-      : null;
-  const maskedLastMove =
-    visFrom || visTo
-      ? {
-          from: visFrom,
-          to: visTo,
-          isDrop: Boolean(rawLm?.isDrop && visTo),
-          dropType: visTo ? rawLm?.dropType || null : null
-        }
-      : null;
+  const rawFrames =
+    Array.isArray(state.historyFrames) && state.historyFrames.length > 0
+      ? state.historyFrames
+      : [makeHistoryFrame(state, null)];
+  const tailRawFrames = rawFrames.length > 16 ? rawFrames.slice(-16) : rawFrames;
+  const maskedFrames = tailRawFrames.map((f, idx) =>
+    maskFrameForFogPeer(
+      state,
+      f,
+      peerColor,
+      vDef,
+      idx === tailRawFrames.length - 1 ? vis : null
+    )
+  );
+  const latestMasked = maskedFrames[maskedFrames.length - 1];
 
   const maskedHistory = state.moveHistory.map((san, idx) => {
     const plyColor = idx % 2 === 0 ? 'w' : 'b';
     return plyColor === peerColor ? san : '?';
   });
 
-  const lastFrame = state.historyFrames[state.historyFrames.length - 1];
-  const lastMeta = lastFrame?.meta;
-  const moverIsPeer = lastMeta?.moverColor === peerColor;
-
-  const maskedFrame = {
-    board: maskedBoard,
-    turn: state.turn,
-    inCheck: false,
-    lastMove: maskedLastMove,
-    captured: { w: [], b: [] },
-    pockets: vDef.allowDrops
-      ? { w: (state.pockets?.w || []).slice(), b: (state.pockets?.b || []).slice() }
-      : { w: [], b: [] },
-    meta: lastMeta
-      ? {
-          moverColor: lastMeta.moverColor,
-          isCapture: Boolean(lastMeta.isCapture && (moverIsPeer || visTo)),
-          isDrop: Boolean(lastMeta.isDrop && (moverIsPeer || visTo)),
-          dropType: moverIsPeer || visTo ? lastMeta.dropType || null : null,
-          castleSide: moverIsPeer ? lastMeta.castleSide || null : null,
-          rookMove: moverIsPeer ? lastMeta.rookMove || null : null,
-          promotion: moverIsPeer ? lastMeta.promotion || null : null
-        }
-      : null
-  };
-
   return {
     variant: state.variant,
-    board: maskedBoard,
+    board: latestMasked.board,
     turn: state.turn,
     castling: {
       wK: peerColor === 'w' ? Boolean(state.castling.wK) : false,
@@ -2731,14 +2798,14 @@ function serializeStateForPeer(state, peerColor) {
     status: state.status,
     winner: state.winner,
     inCheck: false,
-    lastMove: maskedLastMove,
+    lastMove: latestMasked.lastMove,
     moveHistory: maskedHistory,
     captured: { w: [], b: [] },
     pockets: vDef.allowDrops
       ? { w: (state.pockets?.w || []).slice(), b: (state.pockets?.b || []).slice() }
       : { w: [], b: [] },
     promoted: [],
-    historyFrames: [maskedFrame],
+    historyFrames: maskedFrames,
     fogMasked: true,
     fogVisible: Array.from(vis),
     fogLegalMoves: getAllLegalMoves(state, peerColor)
@@ -2812,6 +2879,13 @@ function validateAndHydrateState(raw) {
     };
   };
 
+  const isFogMasked = Boolean(raw.fogMasked && cleanVariant === 'fog' && raw.status === 'playing');
+  const cleanFogVisible =
+    isFogMasked && Array.isArray(raw.fogVisible)
+      ? raw.fogVisible.slice(0, 64).filter(isValidCoordKey)
+      : null;
+  const cleanFogMoves = isFogMasked ? sanitizeLegalMoveList(raw.fogLegalMoves) : null;
+
   const cleanFrames = [];
   if (Array.isArray(raw.historyFrames)) {
     for (const f of raw.historyFrames.slice(0, 601)) {
@@ -2832,6 +2906,10 @@ function validateAndHydrateState(raw) {
           b: cleanPocketSide(f.pockets?.b)
         },
         dice: cleanVariant === 'dice' ? cleanDiceObj(f.dice) : null,
+        fogVisible:
+          isFogMasked && Array.isArray(f.fogVisible)
+            ? f.fogVisible.slice(0, 64).filter(isValidCoordKey)
+            : null,
         meta:
           f.meta && typeof f.meta === 'object'
             ? {
@@ -2862,13 +2940,6 @@ function validateAndHydrateState(raw) {
       });
     }
   }
-
-  const isFogMasked = Boolean(raw.fogMasked && cleanVariant === 'fog' && raw.status === 'playing');
-  const cleanFogVisible =
-    isFogMasked && Array.isArray(raw.fogVisible)
-      ? raw.fogVisible.slice(0, 64).filter(isValidCoordKey)
-      : null;
-  const cleanFogMoves = isFogMasked ? sanitizeLegalMoveList(raw.fogLegalMoves) : null;
 
   let cleanSecretQueens = null;
   if (cleanVariant === 'secret' && raw.secretQueens && typeof raw.secretQueens === 'object') {
@@ -3753,9 +3824,11 @@ function handleGuestIncomingData(data) {
     const newMoveCount = hydrated.moveHistory.length;
 
     // Re-stitch earlier historyFrames if Host sent a compact tail window during live play
+    // (preserving fog-masked history prefix during live Fog of War too, until full post-game reveal)
     if (
-      !hydrated.fogMasked &&
       prevState &&
+      prevState.variant === hydrated.variant &&
+      Boolean(prevState.fogMasked) === Boolean(hydrated.fogMasked) &&
       Array.isArray(prevState.historyFrames) &&
       newMoveCount + 1 > hydrated.historyFrames.length
     ) {
@@ -4522,7 +4595,7 @@ function cacheDom() {
   dom.mobileVariantPanel = document.getElementById('mobile-variant-panel');
   dom.mobileVariantsHint = document.getElementById('mobile-variants-hint');
   dom.mobileVariantGrid = document.getElementById('mobile-variant-grid');
-  dom.mobileVariantDesc = document.getElementById('mobile-variant-desc');
+  dom.variantTooltip = document.getElementById('variant-tooltip');
 
   dom.topSwatch = document.getElementById('top-color-swatch');
   dom.topName = document.getElementById('top-player-name');
@@ -4561,7 +4634,6 @@ function cacheDom() {
   dom.openSetupBtn = document.getElementById('open-setup-btn');
   dom.setupBackBtn = document.getElementById('setup-back-btn');
   dom.setupVariantGrid = document.getElementById('setup-variant-grid');
-  dom.setupVariantDesc = document.getElementById('setup-variant-desc');
   dom.presetRow = document.getElementById('preset-row');
   dom.slidersGroup = document.getElementById('sliders-group');
   dom.minutesLabel = document.getElementById('setup-minutes-label');
@@ -4680,13 +4752,51 @@ function getFogViewerColor() {
   return net.mode === 'online' ? net.myColor : gameState.turn;
 }
 
-function getDisplayedFrame() {
+function getReplayMinPly() {
+  const frames = gameState.historyFrames;
+  if (!frames || frames.length === 0) return gameState.moveHistory.length;
+  return Math.max(0, gameState.moveHistory.length + 1 - frames.length);
+}
+
+function getFrameForPly(ply) {
   const frames = gameState.historyFrames;
   if (!frames || frames.length === 0) {
     return makeHistoryFrame(gameState, null);
   }
-  const idx = Math.max(0, Math.min(frames.length - 1, viewPly));
+  const minPly = getReplayMinPly();
+  const idx = Math.max(0, Math.min(frames.length - 1, ply - minPly));
   return frames[idx];
+}
+
+function getDisplayedFrame() {
+  return getFrameForPly(viewPly);
+}
+
+function getVisibleSquaresForFrame(frame, viewerColor, liveStateFallback = null) {
+  if (!getVariantDef(gameState).fogOfWar) return null;
+  if (gameState.fogMasked) {
+    const keys =
+      frame && Array.isArray(frame.fogVisible)
+        ? frame.fogVisible
+        : Array.isArray(gameState.fogVisible)
+          ? gameState.fogVisible
+          : [];
+    return new Set(keys);
+  }
+  if (frame && frame.fogVis && Array.isArray(frame.fogVis[viewerColor])) {
+    return new Set(frame.fogVis[viewerColor]);
+  }
+  if (liveStateFallback) {
+    return computeVisibleSquares(liveStateFallback, viewerColor);
+  }
+  return computeVisibleSquares(
+    {
+      ...gameState,
+      board: frame?.board || gameState.board,
+      turn: frame?.turn || gameState.turn
+    },
+    viewerColor
+  );
 }
 
 function canPlayerMovePiece(color) {
@@ -4755,6 +4865,10 @@ function clearDiceAutoPassTimer() {
 
 function clearBoardTransientUI() {
   clearDiceAutoPassTimer();
+  lastRenderedDiceKey = '';
+  if (typeof hideVariantTooltip === 'function') {
+    hideVariantTooltip();
+  }
   cancelActiveDrag();
   clearSelection();
   clearAnnotations();
@@ -4835,13 +4949,16 @@ function selectPremovePocket(dropType) {
 function queueSlideAnimationFromFrame(frame, reverse = false) {
   if (!frame || !frame.lastMove || !frame.lastMove.from || !frame.lastMove.to) return;
 
-  // In live Fog of War, only slide-animate if BOTH origin and destination are visible to the viewer
+  // In live Fog of War, only slide-animate if BOTH origin and destination are visible on screen
   // so pieces emerging from fog do not visually betray their hidden starting square!
   if (isFogActiveNow()) {
-    const vis = computeVisibleSquares(gameState, getFogViewerColor());
+    const viewerColor = getFogViewerColor();
+    const activeFrame = getDisplayedFrame();
+    const vis = getVisibleSquaresForFrame(activeFrame, viewerColor, isViewingLive() ? gameState : null);
+    const frameVis = reverse ? getVisibleSquaresForFrame(frame, viewerColor, null) : vis;
     const fromKey = `${frame.lastMove.from.r},${frame.lastMove.from.c}`;
     const toKey = `${frame.lastMove.to.r},${frame.lastMove.to.c}`;
-    if (!vis.has(fromKey) || !vis.has(toKey)) {
+    if (!vis || !vis.has(fromKey) || !vis.has(toKey) || !frameVis || !frameVis.has(fromKey) || !frameVis.has(toKey)) {
       return;
     }
   }
@@ -6460,7 +6577,9 @@ function renderBoard() {
   const fragment = document.createDocumentFragment();
 
   const fogActive = isFogActiveNow();
-  const visibleSet = fogActive ? computeVisibleSquares(gameState, getFogViewerColor()) : null;
+  const visibleSet = fogActive
+    ? getVisibleSquaresForFrame(frame, getFogViewerColor(), viewingLive ? gameState : null)
+    : null;
 
   const showProjectedPremoves =
     viewingLive &&
@@ -7041,15 +7160,12 @@ function renderStatusAndControls() {
       btn.disabled = variantLocked;
     }
   }
-  if (dom.mobileVariantDesc) {
-    dom.mobileVariantDesc.textContent = pillVDef.description;
-  }
   if (dom.mobileVariantsHint) {
     dom.mobileVariantsHint.textContent = variantLocked
       ? 'Locked during online game'
       : net.mode === 'setup'
-        ? 'Tap to select match variant'
-        : 'Tap to switch local board';
+        ? 'Tap variant to select • (i) for rules'
+        : 'Tap to switch local board • (i) for rules';
   }
 
   // Incoming draw offer banner
@@ -7067,10 +7183,13 @@ function renderStatusAndControls() {
 
   if (!isViewingLive() && gameState.moveHistory.length > 0) {
     dom.statusBanner.classList.add('viewing-past');
+    const moverAtPly = (viewPly - 1) % 2 === 0 ? 'w' : 'b';
+    const sanLabel =
+      fogActive && getFogViewerColor() !== moverAtPly ? '?' : gameState.moveHistory[viewPly - 1];
     statusText =
       viewPly === 0
         ? `Viewing start position (0/${gameState.moveHistory.length}) — click >| for live`
-        : `Viewing move ${viewPly}/${gameState.moveHistory.length} (${gameState.moveHistory[viewPly - 1]}) — click >| for live`;
+        : `Viewing move ${viewPly}/${gameState.moveHistory.length} (${sanLabel}) — click >| for live`;
   } else if (net.mode === 'editor') {
     statusText = 'Custom Board Editor — Tap pieces or drag to set up';
   } else if (net.mode === 'waiting') {
@@ -7208,16 +7327,17 @@ function renderStatusAndControls() {
     }
   }
 
-  // Replay Navigation Buttons (disabled while live Fog of War is active; unlocked once game ends)
+  // Replay Navigation Buttons (supported in live Fog of War too with each turn's fog preserved!)
   const totalPlies = gameState.moveHistory.length;
-  dom.navFirstBtn.disabled = fogActive || viewPly <= 0;
-  dom.navPrevBtn.disabled = fogActive || viewPly <= 0;
-  dom.navNextBtn.disabled = fogActive || viewPly >= totalPlies;
-  dom.navLastBtn.disabled = fogActive || viewPly >= totalPlies;
-  dom.navLastBtn.classList.toggle('live-behind', !fogActive && viewPly < totalPlies);
+  const minReplayPly = getReplayMinPly();
+  dom.navFirstBtn.disabled = viewPly <= minReplayPly;
+  dom.navPrevBtn.disabled = viewPly <= minReplayPly;
+  dom.navNextBtn.disabled = viewPly >= totalPlies;
+  dom.navLastBtn.disabled = viewPly >= totalPlies;
+  dom.navLastBtn.classList.toggle('live-behind', viewPly < totalPlies);
 
-  if (dom.mobPrevBtn) dom.mobPrevBtn.disabled = fogActive || viewPly <= 0;
-  if (dom.mobNextBtn) dom.mobNextBtn.disabled = fogActive || viewPly >= totalPlies;
+  if (dom.mobPrevBtn) dom.mobPrevBtn.disabled = viewPly <= minReplayPly;
+  if (dom.mobNextBtn) dom.mobNextBtn.disabled = viewPly >= totalPlies;
   if (dom.mobLocalActions) dom.mobLocalActions.classList.toggle('hidden', net.mode !== 'local');
   if (dom.mobOnlineActions) dom.mobOnlineActions.classList.toggle('hidden', net.mode !== 'online');
   if (dom.mobPlayFriendBtn) {
@@ -7300,6 +7420,7 @@ function renderMoveHistory() {
 
   const fogActive = isFogActiveNow();
   const viewerColor = getFogViewerColor();
+  const minReplayPly = getReplayMinPly();
 
   const frag = document.createDocumentFragment();
   for (let i = 0; i < moves.length; i += 2) {
@@ -7314,7 +7435,7 @@ function renderMoveHistory() {
     const wMove = document.createElement('span');
     wMove.className = 'move-san' + (viewPly === wPly ? ' active-ply' : '');
     wMove.textContent = fogActive && viewerColor !== 'w' ? '?' : moves[i];
-    if (!fogActive) {
+    if (wPly >= minReplayPly) {
       wMove.addEventListener('click', () => stepHistoryTo(wPly));
     }
 
@@ -7323,7 +7444,7 @@ function renderMoveHistory() {
     if (moves[i + 1]) {
       bMove.className = 'move-san' + (viewPly === bPly ? ' active-ply' : '');
       bMove.textContent = fogActive && viewerColor !== 'b' ? '?' : moves[i + 1];
-      if (!fogActive) {
+      if (bPly >= minReplayPly) {
         bMove.addEventListener('click', () => stepHistoryTo(bPly));
       }
     } else {
@@ -7345,76 +7466,84 @@ function renderMoveHistory() {
 }
 
 const DIE_PIP_COORDS = {
-  1: [[20, 20]],
+  1: [[20, 18.25]],
   2: [
-    [11.5, 11.5],
-    [28.5, 28.5]
+    [11.5, 10.25],
+    [28.5, 26.25]
   ],
   3: [
-    [11, 11],
-    [20, 20],
-    [29, 29]
+    [11.5, 10.25],
+    [20, 18.25],
+    [28.5, 26.25]
   ],
   4: [
-    [11.5, 11.5],
-    [28.5, 11.5],
-    [11.5, 28.5],
-    [28.5, 28.5]
+    [11.5, 10.25],
+    [28.5, 10.25],
+    [11.5, 26.25],
+    [28.5, 26.25]
   ],
   5: [
-    [11, 11],
-    [29, 11],
-    [20, 20],
-    [11, 29],
-    [29, 29]
+    [11.5, 10.25],
+    [28.5, 10.25],
+    [20, 18.25],
+    [11.5, 26.25],
+    [28.5, 26.25]
   ],
   6: [
-    [11.5, 10.5],
-    [28.5, 10.5],
-    [11.5, 20],
-    [28.5, 20],
-    [11.5, 29.5],
-    [28.5, 29.5]
+    [11.5, 9.5],
+    [28.5, 9.5],
+    [11.5, 18.25],
+    [28.5, 18.25],
+    [11.5, 27],
+    [28.5, 27]
   ]
 };
 
 function renderDieFaceSvg(svgEl, val, isDoubles, isDisabled) {
   if (!svgEl) return;
+  if (typeof svgEl.setAttribute === 'function') {
+    svgEl.setAttribute('viewBox', '0 0 40 40');
+  }
   const cleanVal = Math.max(1, Math.min(6, Number(val) || 1));
-  const bgFill = isDoubles ? '#3d2f14' : isDisabled ? '#23211e' : '#2f2338';
-  const strokeCol = isDoubles ? '#f2b949' : isDisabled ? '#45423d' : '#9d6fd4';
-  const pipFill = isDoubles ? '#ffe082' : isDisabled ? '#78736a' : '#f3e8ff';
+  const baseFill = isDisabled ? '#3a3833' : isDoubles ? '#b98324' : '#beb6a4';
+  const faceFill = isDisabled ? '#57544d' : isDoubles ? '#fff4d4' : '#f4efe3';
+  const faceStroke = isDisabled ? '#44413b' : isDoubles ? '#e2a93f' : '#dfd8c7';
+  const pipFill = isDisabled
+    ? '#252320'
+    : cleanVal === 1
+      ? '#b5332a'
+      : isDoubles
+        ? '#362105'
+        : '#1d1b18';
 
   const children = [];
   children.push(
     createSvgEl('rect', {
-      x: 2,
-      y: 2,
-      width: 36,
-      height: 36,
-      rx: 8,
-      ry: 8,
-      fill: bgFill,
-      stroke: strokeCol,
-      'stroke-width': isDoubles ? 2 : 1.75
+      x: 1.5,
+      y: 3.5,
+      width: 37,
+      height: 35,
+      rx: 8.5,
+      ry: 8.5,
+      fill: baseFill
     })
   );
   children.push(
     createSvgEl('rect', {
-      x: 4.5,
-      y: 4.5,
-      width: 31,
-      height: 31,
-      rx: 6,
-      ry: 6,
-      fill: 'none',
-      stroke: 'rgba(255,255,255,0.07)',
-      'stroke-width': 1
+      x: 1.5,
+      y: 1.5,
+      width: 37,
+      height: 33.5,
+      rx: 8.5,
+      ry: 8.5,
+      fill: faceFill,
+      stroke: faceStroke,
+      'stroke-width': 1.25
     })
   );
 
   const pips = DIE_PIP_COORDS[cleanVal] || DIE_PIP_COORDS[1];
-  const r = cleanVal === 1 ? 4.1 : cleanVal === 6 ? 3.0 : 3.2;
+  const r = cleanVal === 1 ? 4.4 : cleanVal === 6 ? 3.15 : 3.4;
   for (const [cx, cy] of pips) {
     children.push(
       createSvgEl('circle', {
@@ -7658,15 +7787,21 @@ function renderDiceBar() {
     }
   }
 
-  const showCastleBadge = Boolean(
+  const canCastleRight = Boolean(
     !noMoves &&
-      ((v1 === 6 && v2 === 4) || (v1 === 4 && v2 === 6))
+      ((v1 === 6 && v2 === 4) || (v1 === 4 && v2 === 6)) &&
+      ((turnColor === 'w' && (gameState.castling?.wK || gameState.castling?.wQ)) ||
+        (turnColor === 'b' && (gameState.castling?.bK || gameState.castling?.bQ)))
   );
+
+  dom.diceBar.classList.toggle('doubles-active', Boolean(isDoubles && !noMoves));
+  dom.diceBar.classList.toggle('no-moves-active', noMoves);
+
   if (dom.diceDoublesBadge) {
     dom.diceDoublesBadge.classList.toggle('hidden', !isDoubles);
   }
   if (dom.diceCastleBadge) {
-    dom.diceCastleBadge.classList.toggle('hidden', !showCastleBadge);
+    dom.diceCastleBadge.classList.toggle('hidden', !canCastleRight);
   }
   if (dom.diceSkipBadge) {
     dom.diceSkipBadge.classList.toggle('hidden', !noMoves);
@@ -7682,14 +7817,25 @@ function renderDiceBar() {
     const sideLabel = turnColor === 'w' ? 'White' : 'Black';
     const n1 = PIECE_DEFS[t1]?.name || 'Pawn';
     const n2 = PIECE_DEFS[t2]?.name || 'Pawn';
+    const waitingOpponent =
+      viewingLive && net.mode === 'online' && gameState.status === 'playing' && turnColor !== net.myColor;
+
     if (noMoves) {
-      dom.dicePromptText.textContent = `${sideLabel} rolled ${n1} (${v1}) & ${n2} (${v2}) — no legal moves! Turn skipped...`;
+      dom.dicePromptText.textContent = 'No legal moves — passing turn...';
+    } else if (waitingOpponent) {
+      dom.dicePromptText.textContent = isDoubles
+        ? `${sideLabel} rolled Doubles — wild move`
+        : `${sideLabel} to move ${n1} or ${n2}`;
     } else if (isDoubles) {
-      dom.dicePromptText.textContent = `${sideLabel} rolled Doubles (${v1}-${v2}) — Wild! Move any piece on the board.`;
-    } else if (showCastleBadge) {
-      dom.dicePromptText.textContent = `${sideLabel}: move ${n1}, ${n2}, or Castle if legal`;
+      dom.dicePromptText.textContent = 'Doubles — move any piece';
+    } else if (hasMoves1 && !hasMoves2 && viewingLive && gameState.status === 'playing') {
+      dom.dicePromptText.textContent = `Move a ${n1} (${n2} blocked)`;
+    } else if (!hasMoves1 && hasMoves2 && viewingLive && gameState.status === 'playing') {
+      dom.dicePromptText.textContent = `Move a ${n2} (${n1} blocked)`;
+    } else if (n1 === n2) {
+      dom.dicePromptText.textContent = `${sideLabel}: move any ${n1}`;
     } else {
-      dom.dicePromptText.textContent = `${sideLabel}: move ${n1} (${v1}) or ${n2} (${v2})`;
+      dom.dicePromptText.textContent = `${sideLabel}: move ${n1} or ${n2}`;
     }
   }
 
@@ -7708,10 +7854,9 @@ function renderAll() {
 // --- Move History Replay (< / > & Arrow Keys) ---
 
 function stepHistoryTo(targetPly) {
-  if (isFogActiveNow()) return;
-
   const maxPly = gameState.moveHistory.length;
-  const clamped = Math.max(0, Math.min(maxPly, targetPly));
+  const minPly = getReplayMinPly();
+  const clamped = Math.max(minPly, Math.min(maxPly, targetPly));
   if (clamped === viewPly) return;
 
   const delta = clamped - viewPly;
@@ -7721,16 +7866,29 @@ function stepHistoryTo(targetPly) {
   clearSelection();
   closePromotionPicker();
 
+  const fogActive = isFogActiveNow();
+  const viewerColor = getFogViewerColor();
+
   if (delta === 1) {
-    const frame = gameState.historyFrames[clamped];
+    const frame = getFrameForPly(clamped);
     queueSlideAnimationFromFrame(frame, false);
-    if (frame?.inCheck && !getVariantDef(gameState).royalCaptureWins) playSound('check');
-    else if (frame?.meta?.promotion) playSound('promote');
-    else if (frame?.meta?.castleSide) playSound('castle');
-    else if (frame?.meta?.isCapture) playSound('capture');
-    else playSound('moveSelf');
+    const moverColor = (clamped - 1) % 2 === 0 ? 'w' : 'b';
+    const hideMetaAudio = fogActive && moverColor !== viewerColor && !frame?.lastMove?.to;
+    if (hideMetaAudio) {
+      playSound('moveSelf');
+    } else if (frame?.inCheck && !getVariantDef(gameState).royalCaptureWins) {
+      playSound('check');
+    } else if (frame?.meta?.promotion) {
+      playSound('promote');
+    } else if (frame?.meta?.castleSide) {
+      playSound('castle');
+    } else if (frame?.meta?.isCapture) {
+      playSound('capture');
+    } else {
+      playSound('moveSelf');
+    }
   } else if (delta === -1) {
-    const undoneFrame = gameState.historyFrames[prevPly];
+    const undoneFrame = getFrameForPly(prevPly);
     queueSlideAnimationFromFrame(undoneFrame, true);
     playSound('moveSelf');
   }
@@ -7838,14 +7996,132 @@ function syncMyNameFromInput() {
   } catch (_) {}
 }
 
+let activeTooltipDot = null;
+let pinnedTooltipDot = null;
+
+function hideVariantTooltip() {
+  if (activeTooltipDot) {
+    activeTooltipDot.classList.remove('info-active');
+  }
+  activeTooltipDot = null;
+  pinnedTooltipDot = null;
+  if (dom.variantTooltip) {
+    dom.variantTooltip.classList.add('hidden');
+  }
+}
+
+function showVariantTooltip(dotEl, variantKey, pin = false) {
+  if (!dom.variantTooltip || !dotEl) return;
+  const key = variantKey || dotEl.dataset?.variantInfo;
+  if (!key || !Object.prototype.hasOwnProperty.call(VARIANT_DEFS, key)) return;
+  const vDef = getVariantDef(key);
+
+  if (activeTooltipDot && activeTooltipDot !== dotEl) {
+    activeTooltipDot.classList.remove('info-active');
+  }
+  activeTooltipDot = dotEl;
+  dotEl.classList.add('info-active');
+  if (pin) {
+    pinnedTooltipDot = dotEl;
+  }
+
+  const titleEl = document.createElement('strong');
+  titleEl.className = 'variant-tooltip-title';
+  titleEl.textContent = vDef.name;
+
+  const bodyEl = document.createElement('span');
+  bodyEl.className = 'variant-tooltip-body';
+  bodyEl.textContent = vDef.description;
+
+  dom.variantTooltip.replaceChildren(titleEl, bodyEl);
+  dom.variantTooltip.classList.remove('hidden');
+
+  if (
+    typeof dotEl.getBoundingClientRect === 'function' &&
+    typeof dom.variantTooltip.getBoundingClientRect === 'function' &&
+    typeof window !== 'undefined'
+  ) {
+    const dotRect = dotEl.getBoundingClientRect();
+    const tipRect = dom.variantTooltip.getBoundingClientRect();
+    const vw = window.innerWidth || 360;
+    const vh = window.innerHeight || 640;
+    const tipW = tipRect.width || 228;
+    const tipH = tipRect.height || 68;
+    const margin = 8;
+
+    let left = dotRect.left + dotRect.width / 2 - tipW / 2;
+    left = Math.max(margin, Math.min(vw - tipW - margin, left));
+
+    let top = dotRect.top - tipH - 8;
+    if (top < margin) {
+      top = Math.min(vh - tipH - margin, dotRect.bottom + 8);
+    }
+
+    dom.variantTooltip.style.left = `${Math.round(left)}px`;
+    dom.variantTooltip.style.top = `${Math.round(top)}px`;
+  }
+}
+
+function togglePinnedVariantTooltip(dotEl) {
+  if (!dotEl) return;
+  if (pinnedTooltipDot === dotEl && dom.variantTooltip && !dom.variantTooltip.classList.contains('hidden')) {
+    hideVariantTooltip();
+    return;
+  }
+  showVariantTooltip(dotEl, dotEl.dataset?.variantInfo, true);
+}
+
+function bindVariantTooltipEvents() {
+  if (typeof document === 'undefined' || !dom.variantTooltip) return;
+  const dots = document.querySelectorAll ? document.querySelectorAll('.variant-info-dot') : [];
+  for (const dot of dots) {
+    if (typeof dot.addEventListener !== 'function') continue;
+    dot.addEventListener('pointerenter', (e) => {
+      if (e.pointerType === 'touch') return;
+      pinnedTooltipDot = null;
+      showVariantTooltip(dot, dot.dataset?.variantInfo, false);
+    });
+    dot.addEventListener('pointerleave', (e) => {
+      if (e.pointerType === 'touch') return;
+      if (pinnedTooltipDot !== dot) {
+        hideVariantTooltip();
+      }
+    });
+    dot.addEventListener('focus', () => {
+      showVariantTooltip(dot, dot.dataset?.variantInfo, false);
+    });
+    dot.addEventListener('blur', () => {
+      if (pinnedTooltipDot !== dot) {
+        hideVariantTooltip();
+      }
+    });
+    dot.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        e.stopPropagation();
+        togglePinnedVariantTooltip(dot);
+      }
+    });
+  }
+
+  const dismissOnOutside = (e) => {
+    const insideDot = e.target?.closest ? e.target.closest('.variant-info-dot') : null;
+    if (!insideDot && dom.variantTooltip && !dom.variantTooltip.classList.contains('hidden')) {
+      hideVariantTooltip();
+    }
+  };
+  if (typeof document.addEventListener === 'function') {
+    document.addEventListener('pointerdown', dismissOnOutside);
+  } else if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('pointerdown', dismissOnOutside);
+  }
+}
+
 function syncSetupPanelUI() {
   if (dom.setupVariantGrid) {
     for (const btn of dom.setupVariantGrid.querySelectorAll('.variant-btn')) {
       btn.classList.toggle('active', btn.dataset.variant === setupConfig.variant);
     }
-  }
-  if (dom.setupVariantDesc) {
-    dom.setupVariantDesc.textContent = getVariantDef(setupConfig.variant).description;
   }
 
   dom.minutesSlider.value = String(setupConfig.minutes);
@@ -8356,6 +8632,7 @@ function initUI() {
 
   syncMyNameFromInput();
   updateSoundToggleUI();
+  bindVariantTooltipEvents();
   syncSetupPanelUI();
 
   // Board & pocket pointer + right-click contextmenu handlers
@@ -8389,6 +8666,7 @@ function initUI() {
 
     if (e.key === 'Escape') {
       e.preventDefault();
+      hideVariantTooltip();
       if (pendingPromotion) {
         closePromotionPicker();
         renderAll();
@@ -8453,11 +8731,18 @@ function initUI() {
 
   if (dom.mobileVariantGrid) {
     dom.mobileVariantGrid.addEventListener('click', (e) => {
+      const infoDot = e.target?.closest ? e.target.closest('.variant-info-dot') : null;
+      if (infoDot) {
+        e.stopPropagation();
+        togglePinnedVariantTooltip(infoDot);
+        return;
+      }
       if (net.mode === 'online' || net.mode === 'waiting' || net.mode === 'joining') return;
       const btn = e.target?.closest ? e.target.closest('.variant-btn') : null;
       if (!btn) return;
       const v = btn.dataset.variant;
       if (!v || !Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v)) return;
+      hideVariantTooltip();
       setupConfig.variant = v;
       setupConfig.customState = null;
       if (net.mode === 'setup') {
@@ -8517,10 +8802,17 @@ function initUI() {
 
   if (dom.setupVariantGrid) {
     dom.setupVariantGrid.addEventListener('click', (e) => {
+      const infoDot = e.target?.closest ? e.target.closest('.variant-info-dot') : null;
+      if (infoDot) {
+        e.stopPropagation();
+        togglePinnedVariantTooltip(infoDot);
+        return;
+      }
       const btn = e.target?.closest ? e.target.closest('.variant-btn') : null;
       if (!btn) return;
       const v = btn.dataset.variant;
       if (v && Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v)) {
+        hideVariantTooltip();
         setupConfig.variant = v;
         if (gameState.moveHistory.length === 0 && !setupConfig.customState) {
           clearBoardTransientUI();
@@ -8535,11 +8827,18 @@ function initUI() {
 
   if (dom.localVariantBar) {
     dom.localVariantBar.addEventListener('click', (e) => {
+      const infoDot = e.target?.closest ? e.target.closest('.variant-info-dot') : null;
+      if (infoDot) {
+        e.stopPropagation();
+        togglePinnedVariantTooltip(infoDot);
+        return;
+      }
       if (net.mode !== 'local' && net.mode !== 'setup') return;
       const btn = e.target?.closest ? e.target.closest('.local-variant-btn') : null;
       if (!btn) return;
       const v = btn.dataset.variant;
       if (!v || !Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v)) return;
+      hideVariantTooltip();
       net.mode = 'local';
       setupConfig.variant = v;
       setupConfig.customState = null;

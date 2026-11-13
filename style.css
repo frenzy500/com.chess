@@ -688,7 +688,7 @@ input,
 .variant-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   background: var(--bg-panel-inset);
   border: 1px solid var(--border-subtle);
   border-radius: 6px;
@@ -707,32 +707,83 @@ input,
   background: #252420;
 }
 
-.variant-card-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  pointer-events: none;
-}
-
 .variant-card-title {
   font-size: 12px;
   font-weight: 700;
   color: var(--text-main);
-  line-height: 1.15;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.variant-card-sub {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--text-dim);
   line-height: 1.2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+  pointer-events: none;
+}
+
+.variant-info-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  margin-left: auto;
+  border-radius: 50%;
+  border: 1px solid #4d4a44;
+  background: #22211e;
+  color: #a8a49c;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-style: normal;
+  line-height: 1;
+  cursor: help;
+  user-select: none;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+
+.variant-info-dot:hover,
+.variant-info-dot:focus-visible,
+.variant-info-dot.info-active {
+  background: #3a3832;
+  border-color: #9e9a90;
+  color: #ffffff;
+  outline: none;
+}
+
+.variant-info-dot-sm {
+  width: 14px;
+  height: 14px;
+  font-size: 9.5px;
+  border-color: #46433e;
+}
+
+/* Floating Variant Rule Tooltip (rendered fixed outside sidebar so never clipped) */
+.variant-tooltip {
+  position: fixed;
+  z-index: 1200;
+  max-width: 248px;
+  padding: 8px 10px;
+  background: #1c1b19;
+  border: 1px solid #59554e;
+  border-radius: 6px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+  color: var(--text-main);
+  pointer-events: none;
+}
+
+.variant-tooltip-title {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 3px;
+}
+
+.variant-tooltip-body {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.38;
+  color: #ccc9c2;
 }
 
 .variant-btn.active {
@@ -769,15 +820,9 @@ input,
   color: #ffffff;
 }
 
-.variant-btn.active .variant-card-sub {
-  color: #c8c5be;
-}
-
-.variant-desc {
-  margin: 0 0 9px;
-  font-size: 11.5px;
-  line-height: 1.35;
-  color: var(--text-muted);
+.variant-btn.active .variant-info-dot {
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #dedad2;
 }
 
 /* ============================================================================
@@ -1528,30 +1573,33 @@ input,
 .local-variant-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 4px;
+  justify-content: flex-start;
+  gap: 3px;
   background: var(--bg-panel-inset);
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   color: var(--text-muted);
   font-family: inherit;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 700;
-  padding: 6px 4px;
+  padding: 5px 5px;
   cursor: pointer;
   min-width: 0;
 }
 
-.local-variant-btn span {
+.local-variant-btn > span:not(.variant-info-dot) {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+  text-align: left;
   pointer-events: none;
 }
 
 .variant-mini-glyph {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   flex-shrink: 0;
   pointer-events: none;
 }
@@ -1685,7 +1733,7 @@ input,
   justify-content: space-between;
   gap: 10px;
   width: var(--board-size);
-  margin: 4px auto 0;
+  margin: 5px auto 0;
   padding: 7px 10px;
   background: var(--bg-panel);
   border: 1px solid var(--border-subtle);
@@ -1694,30 +1742,30 @@ input,
 }
 
 .dice-bar.doubles-active {
-  background: #2c2519;
-  border-color: #7d612c;
+  background: #2b2418;
+  border-color: #8f6d31;
 }
 
 .dice-bar.no-moves-active {
-  background: #33211f;
+  background: #31201e;
   border-color: #6b3832;
 }
 
 .dice-pair {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .die-card {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px 4px 5px;
+  gap: 7px;
+  padding: 4px 9px 4px 6px;
   background: var(--bg-panel-inset);
-  border: 1px solid #54514b;
-  border-radius: 5px;
+  border: 1px solid #4c4943;
+  border-radius: 6px;
   color: var(--text-main);
   font-family: inherit;
   cursor: pointer;
@@ -1726,7 +1774,7 @@ input,
 
 .die-card:hover:not(.die-disabled):not(.blocked) {
   background: #2b2926;
-  border-color: #757169;
+  border-color: #7b776f;
 }
 
 .die-card.selected,
@@ -1743,16 +1791,18 @@ input,
 
 .die-card.blocked,
 .die-card.die-disabled {
-  opacity: 0.42;
+  opacity: 0.48;
   cursor: default;
   border-color: var(--border-subtle);
 }
 
 .die-face-svg {
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
   display: block;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.36));
+  transform-origin: center center;
 }
 
 .die-piece-img {
@@ -1764,7 +1814,7 @@ input,
 }
 
 .die-piece-label {
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 700;
   color: var(--text-main);
   white-space: nowrap;
@@ -1836,24 +1886,49 @@ input,
   color: #f2aca3;
 }
 
-@keyframes diceRollPop {
+@keyframes diceRollLeft {
   0% {
-    transform: rotate(-14deg) scale(0.84);
+    transform: translateY(-4px) rotate(-140deg) scale(0.76);
   }
-  45% {
-    transform: rotate(9deg) scale(1.07);
+  42% {
+    transform: translateY(2px) rotate(16deg) scale(1.06);
   }
-  75% {
-    transform: rotate(-4deg) scale(0.98);
+  72% {
+    transform: translateY(-1px) rotate(-6deg) scale(0.98);
   }
   100% {
-    transform: rotate(0deg) scale(1);
+    transform: translateY(0) rotate(0deg) scale(1);
   }
 }
 
-.dice-pair.rolling .die-face-svg,
-.die-card.rolling .die-face-svg {
-  animation: diceRollPop 260ms cubic-bezier(0.22, 0.85, 0.32, 1);
+@keyframes diceRollRight {
+  0% {
+    transform: translateY(-5px) rotate(150deg) scale(0.74);
+  }
+  42% {
+    transform: translateY(2px) rotate(-18deg) scale(1.07);
+  }
+  72% {
+    transform: translateY(-1px) rotate(6deg) scale(0.98);
+  }
+  100% {
+    transform: translateY(0) rotate(0deg) scale(1);
+  }
+}
+
+#die-card-1.rolling .die-face-svg {
+  animation: diceRollLeft 270ms cubic-bezier(0.22, 0.88, 0.34, 1);
+}
+
+#die-card-2.rolling .die-face-svg {
+  animation: diceRollRight 290ms cubic-bezier(0.22, 0.88, 0.34, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #die-card-1.rolling .die-face-svg,
+  #die-card-2.rolling .die-face-svg {
+    animation: none;
+  }
 }
 
 .square.dice-eligible::after {
@@ -2282,7 +2357,7 @@ input,
 
   .variant-grid-large {
     gap: 8px;
-    margin-bottom: 10px;
+    margin-bottom: 4px;
   }
 
   .variant-grid-large .variant-btn {
@@ -2290,32 +2365,23 @@ input,
   }
 
   .variant-grid-large .variant-icon-badge {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
   }
 
   .variant-grid-large .variant-glyph {
-    width: 20px;
-    height: 20px;
+    width: 19px;
+    height: 19px;
   }
 
   .variant-grid-large .variant-card-title {
     font-size: 13px;
   }
 
-  .variant-grid-large .variant-card-sub {
+  .variant-grid-large .variant-info-dot {
+    width: 20px;
+    height: 20px;
     font-size: 11px;
-    white-space: normal;
-  }
-
-  .mobile-variant-full-desc {
-    margin: 0;
-    padding: 8px 10px;
-    background: var(--bg-panel-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: 5px;
-    font-size: 12px;
-    color: var(--text-main);
   }
 
   /* Prevent iOS Safari Auto-Zoom on Inputs (>= 16px) & Enlarge Touch Controls */
@@ -2428,6 +2494,7 @@ input,
   .dice-bar {
     gap: 8px;
     padding: 6px 8px;
+    flex-wrap: wrap;
   }
 
   .dice-pair {
@@ -2435,29 +2502,43 @@ input,
   }
 
   .die-card {
-    padding: 4px 6px 4px 4px;
-    gap: 5px;
+    padding: 4px 7px 4px 5px;
+    gap: 6px;
   }
 
   .die-face-svg {
-    width: 30px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
   }
 
   .die-piece-img {
-    width: 20px;
-    height: 20px;
+    width: 21px;
+    height: 21px;
   }
 
   .die-piece-label {
-    font-size: 10.5px;
-    min-width: 32px;
+    font-size: 11px;
+  }
+
+  .dice-info {
+    align-items: flex-start;
+    text-align: left;
+    flex-basis: 100%;
+  }
+
+  .dice-badges {
+    justify-content: flex-start;
   }
 
   .dice-prompt-text {
     font-size: 11.5px;
     white-space: normal;
     line-height: 1.25;
+  }
+
+  .local-variant-btn {
+    font-size: 10px;
+    padding: 5px 4px;
   }
 }
 
