@@ -1,9 +1,9 @@
 // ============================================================================
-// ui-schrodinger.js - Schrödinger's Chess live shared Quantum Pool HUD & hints
+// ui-schrodinger.js - Schrödinger's Chess live shared Quantum Pool HUD
 // ============================================================================
 'use strict';
 
-function buildSchrodingerSlotChip(color, roleKey, pieceCode, badgeText, statusClass, titleText) {
+function buildSchrodingerSlotChip(roleKey, pieceCode, sqColor, promoTag, statusClass, titleText) {
   const chip = document.createElement('div');
   chip.className = `sch-slot-chip ${statusClass}`;
   chip.title = titleText;
@@ -14,11 +14,17 @@ function buildSchrodingerSlotChip(color, roleKey, pieceCode, badgeText, statusCl
   img.draggable = false;
   chip.appendChild(img);
 
-  if (badgeText) {
-    const badge = document.createElement('span');
-    badge.className = `sch-slot-pip sch-pip-${roleKey}`;
-    badge.textContent = badgeText;
-    chip.appendChild(badge);
+  if (sqColor) {
+    const dot = document.createElement('span');
+    dot.className = `sch-sq-dot ${sqColor === 'L' ? 'is-light' : 'is-dark'}`;
+    chip.appendChild(dot);
+  }
+
+  if (promoTag) {
+    const plus = document.createElement('span');
+    plus.className = 'sch-promo-tag';
+    plus.textContent = '+';
+    chip.appendChild(plus);
   }
 
   return chip;
@@ -38,6 +44,7 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
   const card = document.createElement('div');
   card.className =
     'sch-side-card' +
+    (sideColor === 'b' ? ' is-black' : ' is-white') +
     (activeTurn ? ' active-turn' : '') +
     (isBottomSide ? ' is-bottom' : ' is-top');
 
@@ -53,9 +60,9 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
   const nameSpan = document.createElement('span');
   nameSpan.className = 'sch-side-name';
   if (net.mode === 'online') {
-    nameSpan.textContent = sideColor === net.myColor ? 'Your Pool' : `${net.peerName || 'Opponent'}'s Pool`;
+    nameSpan.textContent = sideColor === net.myColor ? 'You' : net.peerName || 'Opponent';
   } else {
-    nameSpan.textContent = sideColor === 'w' ? 'White Pool' : 'Black Pool';
+    nameSpan.textContent = sideColor === 'w' ? 'White' : 'Black';
   }
 
   labelWrap.append(swatch, nameSpan);
@@ -75,7 +82,6 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
 
   card.appendChild(head);
 
-  // Build slot chips for base 7 slots: Q, R, R, B(L), B(D), N, N + any +Promo slots
   const slotsGrid = document.createElement('div');
   slotsGrid.className = 'sch-slots-grid';
 
@@ -83,14 +89,13 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
   const capUsed = analysis.counts.captured;
 
   const baseSpecs = [
-    { role: 'q', count: 1, piece: 'q', badge: '', name: 'Queen' },
-    { role: 'r', count: 2, piece: 'r', badge: '', name: 'Rook' },
-    { role: 'bL', count: 1, piece: 'b', badge: 'L', name: 'Light-Square Bishop' },
-    { role: 'bD', count: 1, piece: 'b', badge: 'D', name: 'Dark-Square Bishop' },
-    { role: 'n', count: 2, piece: 'n', badge: '', name: 'Knight' }
+    { role: 'q', count: 1, piece: 'q', sq: '', name: 'Queen' },
+    { role: 'r', count: 2, piece: 'r', sq: '', name: 'Rook' },
+    { role: 'bL', count: 1, piece: 'b', sq: 'L', name: 'Light-Square Bishop' },
+    { role: 'bD', count: 1, piece: 'b', sq: 'D', name: 'Dark-Square Bishop' },
+    { role: 'n', count: 2, piece: 'n', sq: '', name: 'Knight' }
   ];
 
-  // Track overflow concrete pieces absorbed by promotions so Promo badges show when consumed
   let concreteOverflow = 0;
 
   for (const spec of baseSpecs) {
@@ -104,16 +109,16 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
       let tip = `${spec.name}: available in pool`;
       if (i < alive) {
         stateClass = 'slot-board';
-        tip = `${spec.name}: defined on board`;
+        tip = `${spec.name}: on board`;
       } else if (i < usedTotal) {
         stateClass = 'slot-captured';
-        tip = `${spec.name}: captured (slot used)`;
+        tip = `${spec.name}: captured`;
       } else if (isClaimedSuper) {
         stateClass = 'slot-claimed';
         tip = `${spec.name}: claimed in superposition`;
       }
       slotsGrid.appendChild(
-        buildSchrodingerSlotChip(sideColor, spec.role, sideColor + spec.piece, spec.badge, stateClass, tip)
+        buildSchrodingerSlotChip(spec.role, sideColor + spec.piece, spec.sq, false, stateClass, tip)
       );
     }
     if (usedTotal > spec.count) {
@@ -121,7 +126,6 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
     }
   }
 
-  // Render +Promo slots if pawns promoted
   const totalPromos = (analysis.promoL || 0) + (analysis.promoD || 0);
   if (totalPromos > 0) {
     let promoRenderedUsed = 0;
@@ -130,10 +134,10 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
       if (isUsed) promoRenderedUsed++;
       slotsGrid.appendChild(
         buildSchrodingerSlotChip(
-          sideColor,
           'promoL',
           sideColor + 'qm',
-          '+L',
+          'L',
+          true,
           isUsed ? 'slot-promo slot-board' : 'slot-promo slot-open',
           'Promoted Light-Square slot (Q, R, Light B, or N)'
         )
@@ -144,10 +148,10 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
       if (isUsed) promoRenderedUsed++;
       slotsGrid.appendChild(
         buildSchrodingerSlotChip(
-          sideColor,
           'promoD',
           sideColor + 'qm',
-          '+D',
+          'D',
+          true,
           isUsed ? 'slot-promo slot-board' : 'slot-promo slot-open',
           'Promoted Dark-Square slot (Q, R, Dark B, or N)'
         )
@@ -157,7 +161,7 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
 
   card.appendChild(slotsGrid);
 
-  // Superposition summary pills (R/Q, B/Q, captured ?)
+  // Ambiguous superposition breakdown (always Q before R/B)
   const pillsRow = document.createElement('div');
   pillsRow.className = 'sch-meta-pills';
 
@@ -174,9 +178,9 @@ function renderSchrodingerSideCard(displayState, sideColor, isBottomSide) {
     pillsRow.appendChild(pill);
   };
 
-  if (rqTotal > 0) addMetaPill(`${rqTotal}x R/Q`, 'Pieces that could be Rook or Queen');
-  if (blTotal > 0) addMetaPill(`${blTotal}x B/Q(L)`, 'Light-square Bishop or Queen');
-  if (bdTotal > 0) addMetaPill(`${bdTotal}x B/Q(D)`, 'Dark-square Bishop or Queen');
+  if (rqTotal > 0) addMetaPill(`${rqTotal}x Q/R`, 'Pieces that could be Queen or Rook');
+  if (blTotal > 0) addMetaPill(`${blTotal}x Q/B(L)`, 'Light-square Queen or Bishop');
+  if (bdTotal > 0) addMetaPill(`${bdTotal}x Q/B(D)`, 'Dark-square Queen or Bishop');
   if (capQm > 0) addMetaPill(`${capQm}x ? cap`, 'Captured unmoved ? (frees 1 unspecified slot)');
 
   if (pillsRow.childNodes.length > 0) {
@@ -196,44 +200,6 @@ function getDisplaySchrodingerState() {
     captured: frame.captured || { w: [], b: [] },
     schrodinger: frame.schrodinger || gameState.schrodinger
   };
-}
-
-function updateSchrodingerHint() {
-  if (!dom.schrodingerHint) return;
-  const vDef = getVariantDef(gameState);
-  if (!vDef.schrodinger || editorState.active || net.mode === 'setup') return;
-
-  const activeSq = selectedSq || premoveOriginSq;
-  if (isViewingLive() && activeSq) {
-    const hint = getSchrodingerHintForSquare(gameState, activeSq.r, activeSq.c);
-    if (hint) {
-      const alg = coordToAlgebraic(activeSq.r, activeSq.c);
-      const opts = [];
-      if (hint.canKnight) opts.push('L-shape = N');
-      if (hint.canStraight) {
-        opts.push(hint.type === 'bl' || hint.type === 'bd' ? 'Straight = Queen' : 'Straight = R/Q');
-      }
-      if (hint.canDiag) {
-        if (hint.type === 'rq') opts.push('Diag = Queen');
-        else opts.push(`Diag = ${getSchrodingerSquareColor(activeSq.r, activeSq.c) === 'L' ? 'Light' : 'Dark'} B/Q`);
-      }
-      const prefix =
-        hint.type === 'qm' ? `? on ${alg}` : hint.type === 'rq' ? `R/Q on ${alg}` : `B/Q on ${alg}`;
-      dom.schrodingerHint.textContent =
-        opts.length > 0 ? `${prefix}: ${opts.join(' • ')}` : `${prefix}: no legal pool moves`;
-      dom.schrodingerHint.classList.add('has-selection');
-      return;
-    }
-  }
-
-  dom.schrodingerHint.classList.remove('has-selection');
-  if (gameState.status !== 'playing') {
-    dom.schrodingerHint.textContent = 'Game over — use < / > to inspect each wave collapse.';
-  } else {
-    const turnName = gameState.turn === 'w' ? 'White' : 'Black';
-    dom.schrodingerHint.textContent =
-      `${turnName} to move • Click any ? to see legal collapse options.`;
-  }
 }
 
 function renderSchrodingerBar() {
@@ -261,5 +227,4 @@ function renderSchrodingerBar() {
     renderSchrodingerSideCard(displayState, topColor, false),
     renderSchrodingerSideCard(displayState, bottomColor, true)
   );
-  updateSchrodingerHint();
 }

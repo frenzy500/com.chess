@@ -341,8 +341,8 @@ const PIECE_DEFS = {
   },
 
   rq: {
-    name: 'Rook / Queen',
-    symbol: 'R/Q',
+    name: 'Queen / Rook',
+    symbol: 'Q/R',
     value: 7,
     isRoyal: false,
     isQuantum: true,
@@ -355,8 +355,8 @@ const PIECE_DEFS = {
   },
 
   bl: {
-    name: 'Light Bishop / Queen',
-    symbol: 'B/Q',
+    name: 'Light Queen / Bishop',
+    symbol: 'Q/B',
     value: 5,
     isRoyal: false,
     isQuantum: true,
@@ -369,8 +369,8 @@ const PIECE_DEFS = {
   },
 
   bd: {
-    name: 'Dark Bishop / Queen',
-    symbol: 'B/Q',
+    name: 'Dark Queen / Bishop',
+    symbol: 'Q/B',
     value: 5,
     isRoyal: false,
     isQuantum: true,

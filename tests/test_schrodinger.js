@@ -724,21 +724,44 @@ async function runOnlineAndUiTests() {
   }
   assert.strictEqual(host.docBody.classList.contains('schrodinger-mode'), true, 'body gets schrodinger-mode class');
   assert.strictEqual(host.els.get('schrodinger-bar').classList.contains('hidden'), false, '#schrodinger-bar is visible');
+  assert(!host.els.get('schrodinger-bar').textContent.includes('No Check'), 'Circled NO CHECK pill removed');
+  assert.strictEqual(host.els.get('schrodinger-hint'), undefined, 'Circled schrodinger-hint box removed');
   assert.strictEqual(host.els.get('schrodinger-sides').children.length, 2, 'Pool HUD renders both Top and Bottom side cards');
 
-  // Host clicks knight-square b1 ? (7,1) -> checks hint text, then plays Nb1-c3 (7,1 -> 5,2) -> permanently becomes wn!
+  // Verify 7 base slot chips render cleanly on initial side card (Q, 2R, BL, BD, 2N)
+  const initialCard = host.els.get('schrodinger-sides').children[1];
+  const initialGrid = initialCard.children[1];
+  assert.strictEqual(initialGrid.children.length, 7, 'Each side card displays all 7 base pool slots');
+
+  // Host plays straight move e1? wait move Nb1-c3 (7,1 -> 5,2) -> permanently becomes wn!
   host.clickSq(7, 1);
-  assert(host.els.get('schrodinger-hint').textContent.includes('? on b1'), 'Clicking b1 ? updates live Schrodinger hint');
-  assert(host.els.get('schrodinger-hint').textContent.includes('L-shape = N'), 'Hint shows L-shape = N option');
   host.clickSq(5, 2);
 
   await waitFor(() => guest.api.getState().moveHistory.length === 1);
   assert.strictEqual(guest.api.getState().board[5][2], 'wn', 'Guest receives Nb1-c3 collapse to Knight over P2P sync');
 
+  // Now move White's d2 pawn out then d1 ? straight to test Q/R meta pill labeling (Q before R/B)
+  guest.clickSq(1, 0); // Black a7->a6
+  guest.clickSq(2, 0);
+  await waitFor(() => host.api.getState().moveHistory.length === 2);
+  host.clickSq(6, 3); // d2->d4
+  host.clickSq(4, 3);
+  await waitFor(() => guest.api.getState().moveHistory.length === 3);
+  guest.clickSq(2, 0); // Black a6->a5
+  guest.clickSq(3, 0);
+  await waitFor(() => host.api.getState().moveHistory.length === 4);
+  host.clickSq(7, 3); // d1 ? -> d3 straight -> Q/R!
+  host.clickSq(5, 3);
+  await waitFor(() => guest.api.getState().moveHistory.length === 5);
+  assert.strictEqual(guest.api.getState().board[5][3], 'wrq', 'Straight move creates wrq');
+  const whiteCardAfterRq = host.els.get('schrodinger-sides').children[1];
+  const pillsEl = whiteCardAfterRq.children.find((ch) => ch.classList?.contains('sch-meta-pills'));
+  assert(pillsEl && pillsEl.children[0].textContent.includes('Q/R'), 'HUD shows Q/R (Q before R)');
+
   host.cleanup();
   guest.cleanup();
   for (const t of timers) clearTimeout(t);
-  console.log('9. PASS: End-to-end P2P Host/Guest sync, invite URL, Pool HUD & live square hint verified!');
+  console.log('9. PASS: End-to-end P2P Host/Guest sync, invite URL, clean Pool HUD & Q/R ordering verified!');
 }
 
 runOnlineAndUiTests()

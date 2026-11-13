@@ -329,7 +329,6 @@ function renderBoard() {
   dom.board.replaceChildren(fragment);
   renderArrowsOverlay();
   applyPendingSlideAnimations();
-  if (typeof updateSchrodingerHint === 'function') updateSchrodingerHint();
 }
 
 function formatClockText(ms) {

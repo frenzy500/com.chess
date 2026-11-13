@@ -6,7 +6,7 @@ const vm = require('vm');
 const assert = require('assert');
 
 const REPO_DIR = path.resolve(__dirname, '..');
-const EXPECTED_ASSET_VERSION = '20261113j';
+const EXPECTED_ASSET_VERSION = '20261113k';
 
 function extractOrderedAssets(html) {
   const cssMatches = [...html.matchAll(/<link\s+rel="stylesheet"\s+href="(css\/[^"?]+\.css)(?:\?v=([^"]+))?"/g)];

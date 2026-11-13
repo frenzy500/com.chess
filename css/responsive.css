@@ -4,7 +4,7 @@
 @media (min-width: 1120px) {
   body.dice-mode,
   body.schrodinger-mode {
-    --board-size: min(75vh, calc(100vw - 600px), 640px);
+    --board-size: min(75vh, calc(100vw - 635px), 640px);
   }
 
   body.dice-mode .board-column,
@@ -41,9 +41,9 @@
 
   body.schrodinger-mode .schrodinger-bar {
     order: -1;
-    width: 186px;
+    width: 214px;
     margin: 0;
-    padding: 9px;
+    padding: 10px;
     gap: 8px;
     flex-shrink: 0;
   }
@@ -696,37 +696,63 @@
 
   .schrodinger-bar {
     gap: 6px;
-    padding: 6px 8px;
+    padding: 7px 8px;
   }
 
   .sch-sides {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
 
   .sch-side-card {
-    padding: 5px 6px;
+    padding: 6px;
     gap: 5px;
   }
 
-  .sch-slot-chip {
-    width: 21px;
-    height: 21px;
+  .sch-slots-grid {
+    gap: 2px;
   }
 
-  .sch-slot-chip img {
-    width: 17px;
-    height: 17px;
-  }
-
-  .sch-hint {
-    font-size: 11px;
-    padding: 5px 7px;
+  .sch-sq-dot {
+    width: 5px;
+    height: 5px;
+    bottom: 1px;
+    right: 1px;
   }
 
   .local-variant-btn {
     font-size: 10px;
     padding: 5px 4px;
+  }
+}
+
+@media (max-width: 440px) {
+  .mobile-topbar {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .mobile-brand-group {
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .mobile-topbar .brand-title {
+    display: none;
+  }
+
+  .mobile-variant-pill {
+    padding: 4px 8px;
+    white-space: nowrap;
+  }
+
+  .mobile-topbar .icon-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .mobile-topbar .header-tools {
+    gap: 4px;
   }
 }
 

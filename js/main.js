@@ -215,7 +215,6 @@ function cacheDom() {
 
   dom.schrodingerBar = document.getElementById('schrodinger-bar');
   dom.schrodingerSides = document.getElementById('schrodinger-sides');
-  dom.schrodingerHint = document.getElementById('schrodinger-hint');
 }
 
 function initUI() {
