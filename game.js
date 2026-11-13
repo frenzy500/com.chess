@@ -441,11 +441,16 @@ function setDiceRoll(state, d1, d2) {
 
 function rollDiceForState(state, fixedValues = null) {
   if (!state || !getVariantDef(state).diceChess) return state;
-  const d1 =
-    Array.isArray(fixedValues) && fixedValues.length === 2 ? fixedValues[0] : rollSingleDie();
-  const d2 =
-    Array.isArray(fixedValues) && fixedValues.length === 2 ? fixedValues[1] : rollSingleDie();
-  return setDiceRoll(state, d1, d2);
+  if (Array.isArray(fixedValues) && fixedValues.length === 2) {
+    return setDiceRoll(state, fixedValues[0], fixedValues[1]);
+  }
+  const isOpeningTurn = Array.isArray(state.moveHistory) && state.moveHistory.length === 0;
+  const maxAttempts = isOpeningTurn ? 24 : 1;
+  for (let i = 0; i < maxAttempts; i++) {
+    setDiceRoll(state, rollSingleDie(), rollSingleDie());
+    if (!state.dice?.noLegalMoves) break;
+  }
+  return state;
 }
 
 function applyDicePassTurn(state, fixedNextDice = null) {
@@ -4140,6 +4145,34 @@ function clearBoardTransientUI() {
   secretPickCol = null;
 }
 
+function getDisplayedLegalMovesForSquare(state, r, c) {
+  if (!state || state.status !== 'playing') return [];
+  const vDef = getVariantDef(state);
+  if (!vDef.secretQueen || !state.secretQueens) {
+    return getLegalMovesForSquare(state, r, c);
+  }
+
+  // Mask any unrevealed Secret Queen that must stay hidden on this screen:
+  // - In local mode: mask BOTH White and Black unrevealed Secret Queens so neither player's
+  //   secret queen location, Queen-only move dots, or hidden pin restrictions are shown on the shared screen.
+  // - In online mode: mask the OPPONENT's unrevealed Secret Queen so hidden pins/checks aren't spoiled before interaction.
+  const maskedState = cloneState(state);
+  for (const col of ['w', 'b']) {
+    const sqInfo = maskedState.secretQueens?.[col];
+    if (sqInfo && !sqInfo.revealed) {
+      const shouldHide = net.mode === 'online' ? col !== net.myColor : true;
+      if (shouldHide) {
+        maskedState.secretQueens[col] = {
+          sq: null,
+          revealed: false,
+          picked: Boolean(sqInfo.picked)
+        };
+      }
+    }
+  }
+  return getLegalMovesForSquare(maskedState, r, c);
+}
+
 function selectSquare(r, c) {
   premoveOriginSq = null;
   premovePocketType = null;
@@ -5820,7 +5853,11 @@ function renderBoard() {
 
   const legalMap = new Map();
   if (viewingLive) {
-    for (const m of selectedLegalMoves) {
+    const visibleLegalMoves =
+      selectedSq && getVariantDef(gameState).secretQueen
+        ? getDisplayedLegalMovesForSquare(gameState, selectedSq.r, selectedSq.c)
+        : selectedLegalMoves;
+    for (const m of visibleLegalMoves) {
       legalMap.set(`${m.to.r},${m.to.c}`, Boolean(m.captureSq));
     }
   }
@@ -6021,7 +6058,7 @@ function renderBoard() {
         if (getVariantDef(gameState).secretQueen && frame.secretQueens) {
           const sqObj = frame.secretQueens[pieceColor];
           if (sqObj && sqObj.sq && sqObj.sq.r === r && sqObj.sq.c === c && !sqObj.revealed) {
-            const isOwner = net.mode === 'online' ? pieceColor === net.myColor : true;
+            const isOwner = net.mode === 'online' && pieceColor === net.myColor;
             if (isOwner) {
               const badge = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
               badge.setAttribute('class', 'secret-badge');
@@ -7798,14 +7835,20 @@ function initUI() {
   if (dom.mobileVariantGrid) {
     dom.mobileVariantGrid.addEventListener('click', (e) => {
       if (net.mode === 'online' || net.mode === 'waiting' || net.mode === 'joining') return;
-      const btn = e.target.closest('.variant-btn');
+      const btn = e.target?.closest ? e.target.closest('.variant-btn') : null;
       if (!btn) return;
       const v = btn.dataset.variant;
       if (!v || !Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v)) return;
       setupConfig.variant = v;
+      setupConfig.customState = null;
       if (net.mode === 'setup') {
+        if (gameState.moveHistory.length === 0) {
+          clearBoardTransientUI();
+          gameState = createInitialState(v);
+          viewPly = 0;
+        }
         syncSetupPanelUI();
-        renderStatusAndControls();
+        renderAll();
         setMobileTab('play');
       } else {
         clearBoardTransientUI();
@@ -7840,32 +7883,51 @@ function initUI() {
   dom.setupBackBtn.addEventListener('click', () => {
     net.mode = 'local';
     setGameFeedback('');
+    if (
+      gameState.moveHistory.length === 0 &&
+      setupConfig.variant &&
+      gameState.variant !== setupConfig.variant &&
+      !setupConfig.customState
+    ) {
+      clearBoardTransientUI();
+      gameState = createInitialState(setupConfig.variant);
+      viewPly = 0;
+    }
     renderAll();
   });
 
   if (dom.setupVariantGrid) {
     dom.setupVariantGrid.addEventListener('click', (e) => {
-      const btn = e.target.closest('.variant-btn');
+      const btn = e.target?.closest ? e.target.closest('.variant-btn') : null;
       if (!btn) return;
       const v = btn.dataset.variant;
       if (v && Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v)) {
         setupConfig.variant = v;
+        if (gameState.moveHistory.length === 0 && !setupConfig.customState) {
+          clearBoardTransientUI();
+          gameState = createInitialState(v);
+          viewPly = 0;
+        }
         syncSetupPanelUI();
+        renderAll();
       }
     });
   }
 
   if (dom.localVariantBar) {
     dom.localVariantBar.addEventListener('click', (e) => {
-      if (net.mode !== 'local') return;
-      const btn = e.target.closest('.local-variant-btn');
+      if (net.mode !== 'local' && net.mode !== 'setup') return;
+      const btn = e.target?.closest ? e.target.closest('.local-variant-btn') : null;
       if (!btn) return;
       const v = btn.dataset.variant;
       if (!v || !Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v)) return;
+      net.mode = 'local';
       setupConfig.variant = v;
+      setupConfig.customState = null;
       clearBoardTransientUI();
       gameState = createInitialState(v);
       viewPly = 0;
+      syncSetupPanelUI();
       renderAll();
     });
   }
@@ -8345,6 +8407,7 @@ if (typeof module !== 'undefined' && module.exports) {
     INITIAL_BOARD,
     createInitialState,
     getLegalMovesForSquare,
+    getDisplayedLegalMovesForSquare,
     getLegalDropMoves,
     getAllLegalMoves,
     getPremoveTargetsForSquare,
