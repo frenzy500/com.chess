@@ -89,6 +89,16 @@ const VARIANT_DEFS = {
     fogOfWar: false,
     royalCaptureWins: false,
     secretQueen: true
+  },
+  dice: {
+    name: 'Dice Chess',
+    shortName: 'Dice Chess',
+    description: 'Roll two dice each turn (1=P, 2=N, 3=B, 4=R, 5=Q, 6=K). Doubles move any piece on the board. Capture the King to win!',
+    allowSelfCapture: false,
+    allowDrops: false,
+    fogOfWar: false,
+    royalCaptureWins: true,
+    diceChess: true
   }
 };
 
@@ -367,6 +377,128 @@ function cloneBoard(board) {
   return board.map((row) => row.slice());
 }
 
+const DICE_PIECE_MAP = {
+  1: 'p',
+  2: 'n',
+  3: 'b',
+  4: 'r',
+  5: 'q',
+  6: 'k'
+};
+
+const PIECE_TO_DIE_MAP = {
+  p: 1,
+  n: 2,
+  b: 3,
+  r: 4,
+  q: 5,
+  k: 6
+};
+
+function cloneDiceState(dice) {
+  if (!dice || !Array.isArray(dice.values) || dice.values.length !== 2) return null;
+  return {
+    values: [dice.values[0], dice.values[1]],
+    isDoubles: Boolean(dice.isDoubles),
+    noLegalMoves: Boolean(dice.noLegalMoves)
+  };
+}
+
+function canCastleWithDice(dice) {
+  if (!dice || !Array.isArray(dice.values) || dice.values.length !== 2) return true;
+  const [d1, d2] = dice.values;
+  if (d1 === d2) return true;
+  return (d1 === 6 && d2 === 4) || (d1 === 4 && d2 === 6);
+}
+
+function rollSingleDie() {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const arr = new Uint32Array(1);
+    crypto.getRandomValues(arr);
+    return (arr[0] % 6) + 1;
+  }
+  return Math.floor(Math.random() * 6) + 1;
+}
+
+function setDiceRoll(state, d1, d2) {
+  if (!state || !getVariantDef(state).diceChess) return state;
+  const v1 = Math.max(1, Math.min(6, Math.floor(Number(d1) || 1)));
+  const v2 = Math.max(1, Math.min(6, Math.floor(Number(d2) || 1)));
+  state.dice = {
+    values: [v1, v2],
+    isDoubles: v1 === v2,
+    noLegalMoves: false
+  };
+  if (state.status === 'playing') {
+    const moves = getAllLegalMoves(state, state.turn);
+    state.dice.noLegalMoves = moves.length === 0;
+  }
+  if (Array.isArray(state.historyFrames) && state.historyFrames.length > 0) {
+    state.historyFrames[state.historyFrames.length - 1].dice = cloneDiceState(state.dice);
+  }
+  return state;
+}
+
+function rollDiceForState(state, fixedValues = null) {
+  if (!state || !getVariantDef(state).diceChess) return state;
+  const d1 =
+    Array.isArray(fixedValues) && fixedValues.length === 2 ? fixedValues[0] : rollSingleDie();
+  const d2 =
+    Array.isArray(fixedValues) && fixedValues.length === 2 ? fixedValues[1] : rollSingleDie();
+  return setDiceRoll(state, d1, d2);
+}
+
+function applyDicePassTurn(state, fixedNextDice = null) {
+  if (!state || !getVariantDef(state).diceChess || state.status !== 'playing') return state;
+  const next = cloneState(state);
+  const prevRoller = state.turn;
+  const nextTurn = prevRoller === 'w' ? 'b' : 'w';
+  const d1 = state.dice?.values?.[0] || 1;
+  const d2 = state.dice?.values?.[1] || 1;
+
+  next.enPassant = null;
+  next.halfMoveClock += 1;
+  if (prevRoller === 'b') {
+    next.fullMoveNumber += 1;
+  }
+  next.turn = nextTurn;
+  next.inCheck = false;
+
+  const wildProbe = {
+    ...next,
+    dice: { values: [6, 6], isDoubles: true, noLegalMoves: false }
+  };
+  const anyPossibleMoves = getAllLegalMoves(wildProbe, nextTurn);
+  if (anyPossibleMoves.length === 0) {
+    next.status = 'stalemate';
+    next.winner = null;
+    next.dice = null;
+  } else if (next.halfMoveClock >= 100) {
+    next.status = 'draw_50';
+    next.dice = null;
+  } else {
+    rollDiceForState(next, fixedNextDice);
+  }
+
+  const san = `Pass ${d1}-${d2}`;
+  next.moveHistory.push(san);
+  next.historyFrames.push(
+    makeHistoryFrame(next, {
+      moverColor: prevRoller,
+      isCapture: false,
+      isDrop: false,
+      dropType: null,
+      castleSide: null,
+      rookMove: null,
+      promotion: null,
+      isPass: true,
+      passedDice: [d1, d2]
+    })
+  );
+
+  return next;
+}
+
 function cloneLastMove(lm) {
   if (!lm) return null;
   return {
@@ -407,6 +539,7 @@ function makeHistoryFrame(state, meta = null) {
             : null
         }
       : null,
+    dice: cloneDiceState(state.dice),
     meta: meta ? { ...meta } : null
   };
 }
@@ -455,8 +588,12 @@ function createInitialState(variant = 'standard', options = {}) {
               picked: options.blackCol !== undefined || Boolean(options.ready)
             }
           }
-        : null
+        : null,
+    dice: null
   };
+  if (cleanVariant === 'dice') {
+    rollDiceForState(state, options.diceValues || null);
+  }
   const key = computePositionKey(state);
   state.positionCounts[key] = 1;
   state.historyFrames.push(makeHistoryFrame(state, null));
@@ -522,20 +659,34 @@ function createCustomState(config = {}) {
     fogMasked: false,
     fogVisible: null,
     fogLegalMoves: null,
-    secretQueens
+    secretQueens,
+    dice: null
   };
 
   state.inCheck = !getVariantDef(state).royalCaptureWins && isInCheck(state, turn);
 
   if (state.status === 'playing') {
-    const legalMoves = getAllLegalMoves(state);
-    if (legalMoves.length === 0) {
-      if (state.inCheck) {
-        state.status = 'checkmate';
-        state.winner = turn === 'w' ? 'b' : 'w';
-      } else {
+    if (cleanVariant === 'dice') {
+      const wildProbe = {
+        ...state,
+        dice: { values: [6, 6], isDoubles: true, noLegalMoves: false }
+      };
+      if (getAllLegalMoves(wildProbe, turn).length === 0) {
         state.status = 'stalemate';
         state.winner = null;
+      } else {
+        rollDiceForState(state, config.diceValues || null);
+      }
+    } else {
+      const legalMoves = getAllLegalMoves(state);
+      if (legalMoves.length === 0) {
+        if (state.inCheck) {
+          state.status = 'checkmate';
+          state.winner = turn === 'w' ? 'b' : 'w';
+        } else {
+          state.status = 'stalemate';
+          state.winner = null;
+        }
       }
     }
   }
@@ -595,6 +746,7 @@ function cloneState(state) {
               : null
           }
         : null,
+      dice: cloneDiceState(f.dice),
       meta: f.meta ? { ...f.meta } : null
     })),
     fogMasked: Boolean(state.fogMasked),
@@ -617,7 +769,8 @@ function cloneState(state) {
               }
             : null
         }
-      : null
+      : null,
+    dice: cloneDiceState(state.dice)
   };
 }
 
@@ -1246,7 +1399,23 @@ function executeMoveOnBoard(state, move, moverColorOverride = null) {
 function getLegalMovesForSquare(state, r, c) {
   if (state.status !== 'playing') return [];
   const code = state.board[r][c];
-  if (!code || getPieceColor(code) !== state.turn) return [];
+  if (!code) return [];
+
+  const vDef = getVariantDef(state);
+  const pieceColor = getPieceColor(code);
+  const pieceType = getPieceType(code);
+  const isDice = Boolean(vDef.diceChess && state.dice && Array.isArray(state.dice.values));
+  const isWildTurn = Boolean(isDice && state.dice.isDoubles);
+
+  if (!isWildTurn) {
+    if (pieceColor !== state.turn) return [];
+    if (isDice) {
+      const [d1, d2] = state.dice.values;
+      const allowed1 = DICE_PIECE_MAP[d1];
+      const allowed2 = DICE_PIECE_MAP[d2];
+      if (pieceType !== allowed1 && pieceType !== allowed2) return [];
+    }
+  }
 
   if (state.fogMasked && Array.isArray(state.fogLegalMoves)) {
     return state.fogLegalMoves.filter(
@@ -1254,16 +1423,29 @@ function getLegalMovesForSquare(state, r, c) {
     );
   }
 
-  const vDef = getVariantDef(state);
   const color = state.turn;
   const pseudo = generatePseudoMoves(state, r, c, false);
   const legal = [];
 
   for (const move of pseudo) {
+    if (isDice && move.castleSide) {
+      if (pieceColor !== state.turn || !canCastleWithDice(state.dice)) continue;
+    }
+
+    if (isDice && pieceColor !== state.turn) {
+      if (move.castleSide || move.isEnPassant) continue;
+      if (move.captureSq) {
+        const capCode = state.board[move.captureSq.r]?.[move.captureSq.c];
+        if (capCode && PIECE_DEFS[getPieceType(capCode)]?.isRoyal) {
+          continue;
+        }
+      }
+    }
+
     const nextBoard = executeMoveOnBoard(state, move);
     const probeState = createProbeState(state, nextBoard, move);
 
-    const def = PIECE_DEFS[getPieceType(code)];
+    const def = PIECE_DEFS[pieceType];
     if (def && typeof def.afterMove === 'function') {
       def.afterMove(probeState, move);
     }
@@ -1330,10 +1512,17 @@ function getAllLegalMoves(state, color = state.turn) {
       ? state
       : { ...state, turn: color, status: 'playing' };
 
+  const isDiceWild = Boolean(
+    getVariantDef(tempState).diceChess &&
+    tempState.dice &&
+    tempState.dice.isDoubles
+  );
+
   const all = [];
   for (let r = 0; r < BOARD_SIZE; r++) {
     for (let c = 0; c < BOARD_SIZE; c++) {
-      if (getPieceColor(tempState.board[r][c]) === color) {
+      const sqColor = getPieceColor(tempState.board[r][c]);
+      if (sqColor === color || (isDiceWild && sqColor !== null)) {
         all.push(...getLegalMovesForSquare(tempState, r, c));
       }
     }
@@ -1516,17 +1705,20 @@ function formatMoveSAN(prevState, move, nextState) {
   return addCheckSuffix(san);
 }
 
-function applyMove(state, move) {
+function applyMove(state, move, options = {}) {
   const next = cloneState(state);
   const vDef = getVariantDef(next);
   const promoSet = new Set(next.promoted || []);
+  const turnColor = state.turn;
 
-  let moverColor;
+  let moverColor = turnColor;
+  let pieceColor = turnColor;
   let moverType;
   let capturedType = null;
 
   if (move.isDrop) {
-    moverColor = move.color || state.turn;
+    moverColor = move.color || turnColor;
+    pieceColor = moverColor;
     moverType = move.dropType;
 
     const pIdx = next.pockets[moverColor].indexOf(moverType);
@@ -1549,7 +1741,7 @@ function applyMove(state, move) {
     } else {
       next.halfMoveClock += 1;
     }
-    if (moverColor === 'b') {
+    if (turnColor === 'b') {
       next.fullMoveNumber += 1;
     }
 
@@ -1561,16 +1753,17 @@ function applyMove(state, move) {
     };
   } else {
     const movingCode = state.board[move.from.r][move.from.c];
-    moverColor = getPieceColor(movingCode);
+    pieceColor = getPieceColor(movingCode);
+    moverColor = turnColor;
     moverType = getPieceType(movingCode);
 
     const isSQMove = Boolean(
       vDef.secretQueen &&
       next.secretQueens &&
       !move.isDrop &&
-      next.secretQueens[moverColor]?.sq &&
-      next.secretQueens[moverColor].sq.r === move.from.r &&
-      next.secretQueens[moverColor].sq.c === move.from.c
+      next.secretQueens[pieceColor]?.sq &&
+      next.secretQueens[pieceColor].sq.r === move.from.r &&
+      next.secretQueens[pieceColor].sq.c === move.from.c
     );
 
     const fromKey = `${move.from.r},${move.from.c}`;
@@ -1602,9 +1795,9 @@ function applyMove(state, move) {
         next.captured[trayOwner].push(capturedType);
 
         // Crazyhouse: captured enemy non-Royal pieces join mover's pocket (promoted pawns demote to 'p'!)
-        if (vDef.allowDrops && capColor !== moverColor && !PIECE_DEFS[capturedType]?.isRoyal) {
+        if (vDef.allowDrops && capColor !== pieceColor && !PIECE_DEFS[capturedType]?.isRoyal) {
           const bankedType = wasPromotedCapture ? 'p' : capturedType;
-          next.pockets[moverColor].push(bankedType);
+          next.pockets[pieceColor].push(bankedType);
         }
       }
       next.board[move.captureSq.r][move.captureSq.c] = null;
@@ -1627,11 +1820,11 @@ function applyMove(state, move) {
 
     let finalType = move.promotion || moverType;
     if (isSQMove) {
-      if (!next.secretQueens[moverColor].revealed) {
+      if (!next.secretQueens[pieceColor].revealed) {
         const isStd = isStandardPawnMove(state, move.from, move.to, move.captureSq);
-        const reachedEnd = move.to.r === (moverColor === 'w' ? 0 : 7);
+        const reachedEnd = move.to.r === (pieceColor === 'w' ? 0 : 7);
         if (!isStd || reachedEnd) {
-          next.secretQueens[moverColor].revealed = true;
+          next.secretQueens[pieceColor].revealed = true;
           finalType = 'q';
         } else {
           finalType = 'p';
@@ -1639,9 +1832,9 @@ function applyMove(state, move) {
       } else {
         finalType = 'q';
       }
-      next.secretQueens[moverColor].sq = { r: move.to.r, c: move.to.c };
+      next.secretQueens[pieceColor].sq = { r: move.to.r, c: move.to.c };
     }
-    next.board[move.to.r][move.to.c] = moverColor + finalType;
+    next.board[move.to.r][move.to.c] = pieceColor + finalType;
     if (moverWasPromoted) {
       promoSet.add(toKey);
     } else {
@@ -1654,11 +1847,11 @@ function applyMove(state, move) {
       def.afterMove(next, move);
     }
 
-    if (moverColor === 'w' && moverType === 'k') {
+    if (pieceColor === 'w' && moverType === 'k') {
       next.castling.wK = false;
       next.castling.wQ = false;
     }
-    if (moverColor === 'b' && moverType === 'k') {
+    if (pieceColor === 'b' && moverType === 'k') {
       next.castling.bK = false;
       next.castling.bQ = false;
     }
@@ -1672,14 +1865,15 @@ function applyMove(state, move) {
     if (touches(0, 7)) next.castling.bK = false;
     if (touches(0, 0)) next.castling.bQ = false;
 
-    next.enPassant = move.enPassantTarget ? { ...move.enPassantTarget } : null;
+    next.enPassant =
+      pieceColor === turnColor && move.enPassantTarget ? { ...move.enPassantTarget } : null;
 
     if (moverType === 'p' || capturedType !== null) {
       next.halfMoveClock = 0;
     } else {
       next.halfMoveClock += 1;
     }
-    if (moverColor === 'b') {
+    if (turnColor === 'b') {
       next.fullMoveNumber += 1;
     }
 
@@ -1691,13 +1885,14 @@ function applyMove(state, move) {
     };
   }
 
-  const enemyColor = moverColor === 'w' ? 'b' : 'w';
+  const enemyColor = turnColor === 'w' ? 'b' : 'w';
   next.turn = enemyColor;
 
   if (vDef.royalCaptureWins && capturedType && PIECE_DEFS[capturedType]?.isRoyal) {
     next.inCheck = false;
     next.status = 'king_captured';
-    next.winner = moverColor;
+    next.winner = turnColor;
+    if (vDef.diceChess) next.dice = null;
   } else if (state.fogMasked) {
     // Guest optimistic preview on a fog-masked board: wait for Host sync_state for full enemy checks/vision
     next.inCheck = false;
@@ -1706,9 +1901,9 @@ function applyMove(state, move) {
     const optVis = new Set();
     for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
-        if (getPieceColor(next.board[r][c]) === moverColor) {
+        if (getPieceColor(next.board[r][c]) === turnColor) {
           optVis.add(`${r},${c}`);
-          for (const pm of generatePseudoMoves({ ...next, turn: moverColor }, r, c, false)) {
+          for (const pm of generatePseudoMoves({ ...next, turn: turnColor }, r, c, false)) {
             if (pm.to) optVis.add(`${pm.to.r},${pm.to.c}`);
           }
         }
@@ -1719,16 +1914,40 @@ function applyMove(state, move) {
     next.inCheck = false;
     const posKey = computePositionKey(next);
     next.positionCounts[posKey] = (next.positionCounts[posKey] || 0) + 1;
-    const opponentMoves = getAllLegalMoves(next, enemyColor);
-    if (opponentMoves.length === 0) {
-      next.status = 'stalemate';
-      next.winner = null;
-    } else if (next.positionCounts[posKey] >= 3) {
-      next.status = 'draw_repetition';
-    } else if (next.halfMoveClock >= 100) {
-      next.status = 'draw_50';
-    } else if (hasInsufficientMaterial(next)) {
-      next.status = 'draw_material';
+    if (vDef.diceChess) {
+      const wildProbe = {
+        ...next,
+        dice: { values: [6, 6], isDoubles: true, noLegalMoves: false }
+      };
+      const anyPossibleMoves = getAllLegalMoves(wildProbe, enemyColor);
+      if (anyPossibleMoves.length === 0) {
+        next.status = 'stalemate';
+        next.winner = null;
+        next.dice = null;
+      } else if (next.positionCounts[posKey] >= 3) {
+        next.status = 'draw_repetition';
+        next.dice = null;
+      } else if (next.halfMoveClock >= 100) {
+        next.status = 'draw_50';
+        next.dice = null;
+      } else if (hasInsufficientMaterial(next)) {
+        next.status = 'draw_material';
+        next.dice = null;
+      } else {
+        rollDiceForState(next, options.nextDice || null);
+      }
+    } else {
+      const opponentMoves = getAllLegalMoves(next, enemyColor);
+      if (opponentMoves.length === 0) {
+        next.status = 'stalemate';
+        next.winner = null;
+      } else if (next.positionCounts[posKey] >= 3) {
+        next.status = 'draw_repetition';
+      } else if (next.halfMoveClock >= 100) {
+        next.status = 'draw_50';
+      } else if (hasInsufficientMaterial(next)) {
+        next.status = 'draw_material';
+      }
     }
   } else {
     // Check if mover's secret queen has unobstructed Queen line of sight to enemy King (delivering check)
@@ -1971,6 +2190,14 @@ function playSound(kind) {
     case 'lowTime':
       playToneNote(ctx, t, 784, 0.11, 0.07, 'sine');
       playToneNote(ctx, t + 0.09, 784, 0.11, 0.07, 'sine');
+      break;
+    case 'diceRoll':
+      playWoodTap(ctx, t, 220, 1320, 0.18, 0.036);
+      playWoodTap(ctx, t + 0.042, 265, 1480, 0.2, 0.038);
+      break;
+    case 'dicePass':
+      playToneNote(ctx, t, 330, 0.09, 0.11, 'triangle');
+      playToneNote(ctx, t + 0.07, 261.63, 0.09, 0.13, 'triangle');
       break;
     default:
       break;
@@ -2380,6 +2607,7 @@ function serializeAuthoritativeState(state) {
             : null
         }
       : null,
+    dice: cloneDiceState(state.dice),
     historyFrames: state.historyFrames
   };
 }
@@ -2555,6 +2783,19 @@ function validateAndHydrateState(raw) {
     ? raw.promoted.slice(0, 64).filter(isValidCoordKey)
     : [];
 
+  const cleanDiceObj = (d) => {
+    if (!d || typeof d !== 'object' || !Array.isArray(d.values) || d.values.length !== 2) {
+      return null;
+    }
+    const v1 = Math.max(1, Math.min(6, Math.floor(Number(d.values[0]) || 1)));
+    const v2 = Math.max(1, Math.min(6, Math.floor(Number(d.values[1]) || 1)));
+    return {
+      values: [v1, v2],
+      isDoubles: v1 === v2,
+      noLegalMoves: Boolean(d.noLegalMoves)
+    };
+  };
+
   const cleanFrames = [];
   if (Array.isArray(raw.historyFrames)) {
     for (const f of raw.historyFrames.slice(0, 601)) {
@@ -2574,6 +2815,7 @@ function validateAndHydrateState(raw) {
           w: cleanPocketSide(f.pockets?.w),
           b: cleanPocketSide(f.pockets?.b)
         },
+        dice: cleanVariant === 'dice' ? cleanDiceObj(f.dice) : null,
         meta:
           f.meta && typeof f.meta === 'object'
             ? {
@@ -2597,7 +2839,8 @@ function validateAndHydrateState(raw) {
                 promotion:
                   typeof f.meta.promotion === 'string' && PIECE_DEFS[f.meta.promotion]
                     ? f.meta.promotion
-                    : null
+                    : null,
+                isPass: Boolean(f.meta.isPass)
               }
             : null
       });
@@ -2660,7 +2903,8 @@ function validateAndHydrateState(raw) {
     fogMasked: isFogMasked,
     fogVisible: cleanFogVisible,
     fogLegalMoves: cleanFogMoves,
-    secretQueens: cleanSecretQueens
+    secretQueens: cleanSecretQueens,
+    dice: cleanVariant === 'dice' ? cleanDiceObj(raw.dice) : null
   };
 
   if (hydrated.historyFrames.length === 0) {
@@ -2854,6 +3098,17 @@ function handleHostIncomingData(data) {
     }
     broadcastHostState();
     renderAll();
+    return;
+  }
+
+  if (data.type === 'dice_pass') {
+    if (
+      gameState.status === 'playing' &&
+      getVariantDef(gameState).diceChess &&
+      gameState.dice?.noLegalMoves
+    ) {
+      executeDicePassTurn();
+    }
     return;
   }
 
@@ -3766,6 +4021,21 @@ function cacheDom() {
   dom.secretPickText = document.getElementById('secret-pick-text');
   dom.secretRandomBtn = document.getElementById('secret-random-btn');
   dom.secretConfirmBtn = document.getElementById('secret-confirm-btn');
+
+  dom.diceBar = document.getElementById('dice-bar');
+  dom.dieCard1 = document.getElementById('die-card-1');
+  dom.dieSvg1 = document.getElementById('die-svg-1');
+  dom.diePieceImg1 = document.getElementById('die-piece-img-1');
+  dom.dieLabel1 = document.getElementById('die-label-1');
+  dom.dieCard2 = document.getElementById('die-card-2');
+  dom.dieSvg2 = document.getElementById('die-svg-2');
+  dom.diePieceImg2 = document.getElementById('die-piece-img-2');
+  dom.dieLabel2 = document.getElementById('die-label-2');
+  dom.diceDoublesBadge = document.getElementById('dice-doubles-badge');
+  dom.diceCastleBadge = document.getElementById('dice-castle-badge');
+  dom.diceSkipBadge = document.getElementById('dice-skip-badge');
+  dom.dicePromptText = document.getElementById('dice-prompt-text');
+  dom.diceSkipBtn = document.getElementById('dice-skip-btn');
 }
 
 function isViewingLive() {
@@ -3799,8 +4069,10 @@ function canPlayerMovePiece(color) {
   if (!isViewingLive()) return false;
   if (gameState.status !== 'playing' || opponentDisconnected) return false;
   if (net.mode === 'waiting' || net.mode === 'joining' || net.mode === 'setup') return false;
-  if (net.mode === 'online') {
-    return color === net.myColor && gameState.turn === net.myColor;
+  const isMyTurn = net.mode === 'online' ? gameState.turn === net.myColor : true;
+  if (!isMyTurn) return false;
+  if (getVariantDef(gameState).diceChess && gameState.dice?.isDoubles) {
+    return color === 'w' || color === 'b';
   }
   return color === gameState.turn;
 }
@@ -3847,7 +4119,18 @@ function cancelActiveDrag() {
   }
 }
 
+let diceAutoPassTimer = null;
+let lastRenderedDiceKey = '';
+
+function clearDiceAutoPassTimer() {
+  if (diceAutoPassTimer) {
+    clearTimeout(diceAutoPassTimer);
+    diceAutoPassTimer = null;
+  }
+}
+
 function clearBoardTransientUI() {
+  clearDiceAutoPassTimer();
   cancelActiveDrag();
   clearSelection();
   clearAnnotations();
@@ -5582,6 +5865,26 @@ function renderBoard() {
     }
   }
 
+  const isDiceLive = Boolean(
+    viewingLive &&
+      getVariantDef(gameState).diceChess &&
+      gameState.status === 'playing' &&
+      !opponentDisconnected &&
+      net.mode !== 'waiting' &&
+      net.mode !== 'setup' &&
+      net.mode !== 'joining'
+  );
+  const diceEligibleSet = new Set();
+  if (isDiceLive && (net.mode !== 'online' || gameState.turn === net.myColor)) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (gameState.board[r][c] && getLegalMovesForSquare(gameState, r, c).length > 0) {
+          diceEligibleSet.add(`${r},${c}`);
+        }
+      }
+    }
+  }
+
   for (let visRow = 0; visRow < BOARD_SIZE; visRow++) {
     for (let visCol = 0; visCol < BOARD_SIZE; visCol++) {
       const r = boardFlipped ? 7 - visRow : visRow;
@@ -5629,6 +5932,13 @@ function renderBoard() {
 
       if (checkedSquares.has(key)) {
         sqEl.classList.add('in-check');
+      }
+
+      if (diceEligibleSet.has(key)) {
+        sqEl.classList.add('dice-eligible');
+        if (gameState.dice?.isDoubles) {
+          sqEl.classList.add('dice-eligible-wild');
+        }
       }
 
       if (viewingLive && gameState.status === 'secret_pick') {
@@ -5680,7 +5990,10 @@ function renderBoard() {
       if (code) {
         const pieceColor = getPieceColor(code);
         const pieceType = getPieceType(code);
-        if (canPlayerMovePiece(pieceColor) || canPlayerPremovePiece(pieceColor)) {
+        const canMoveThisSq = isDiceLive
+          ? diceEligibleSet.has(key)
+          : canPlayerMovePiece(pieceColor);
+        if (canMoveThisSq || canPlayerPremovePiece(pieceColor)) {
           sqEl.classList.add('movable');
         }
         const img = document.createElement('img');
@@ -6375,9 +6688,362 @@ function renderMoveHistory() {
   }
 }
 
+const DIE_PIP_COORDS = {
+  1: [[20, 20]],
+  2: [
+    [11.5, 11.5],
+    [28.5, 28.5]
+  ],
+  3: [
+    [11, 11],
+    [20, 20],
+    [29, 29]
+  ],
+  4: [
+    [11.5, 11.5],
+    [28.5, 11.5],
+    [11.5, 28.5],
+    [28.5, 28.5]
+  ],
+  5: [
+    [11, 11],
+    [29, 11],
+    [20, 20],
+    [11, 29],
+    [29, 29]
+  ],
+  6: [
+    [11.5, 10.5],
+    [28.5, 10.5],
+    [11.5, 20],
+    [28.5, 20],
+    [11.5, 29.5],
+    [28.5, 29.5]
+  ]
+};
+
+function renderDieFaceSvg(svgEl, val, isDoubles, isDisabled) {
+  if (!svgEl) return;
+  const cleanVal = Math.max(1, Math.min(6, Number(val) || 1));
+  const bgFill = isDoubles ? '#3d2f14' : isDisabled ? '#23211e' : '#2f2338';
+  const strokeCol = isDoubles ? '#f2b949' : isDisabled ? '#45423d' : '#9d6fd4';
+  const pipFill = isDoubles ? '#ffe082' : isDisabled ? '#78736a' : '#f3e8ff';
+
+  const children = [];
+  children.push(
+    createSvgEl('rect', {
+      x: 2,
+      y: 2,
+      width: 36,
+      height: 36,
+      rx: 8,
+      ry: 8,
+      fill: bgFill,
+      stroke: strokeCol,
+      'stroke-width': isDoubles ? 2 : 1.75
+    })
+  );
+  children.push(
+    createSvgEl('rect', {
+      x: 4.5,
+      y: 4.5,
+      width: 31,
+      height: 31,
+      rx: 6,
+      ry: 6,
+      fill: 'none',
+      stroke: 'rgba(255,255,255,0.07)',
+      'stroke-width': 1
+    })
+  );
+
+  const pips = DIE_PIP_COORDS[cleanVal] || DIE_PIP_COORDS[1];
+  const r = cleanVal === 1 ? 4.1 : cleanVal === 6 ? 3.0 : 3.2;
+  for (const [cx, cy] of pips) {
+    children.push(
+      createSvgEl('circle', {
+        cx,
+        cy,
+        r,
+        fill: pipFill
+      })
+    );
+  }
+
+  svgEl.replaceChildren(...children);
+}
+
+function executeDicePassTurn() {
+  clearDiceAutoPassTimer();
+  if (
+    gameState.status !== 'playing' ||
+    !getVariantDef(gameState).diceChess ||
+    !gameState.dice?.noLegalMoves
+  ) {
+    return;
+  }
+
+  if (net.mode === 'online') {
+    if (net.role === 'guest') {
+      sendPacket(net.conn, { type: 'dice_pass' });
+      return;
+    }
+    if (net.role === 'host') {
+      const activeColor = gameState.turn;
+      if (!commitHostClockTurn(activeColor)) {
+        reconcileInteractionAfterTurnChange();
+        playSound('gameEnd');
+        broadcastHostState();
+        renderAll();
+        return;
+      }
+      const wasAtLive = isViewingLive();
+      gameState = applyDicePassTurn(gameState);
+      if (gameState.status !== 'playing') {
+        clockState.running = false;
+      }
+      if (wasAtLive) {
+        viewPly = gameState.moveHistory.length;
+      }
+      clearSelection();
+      playSound('dicePass');
+      broadcastHostState();
+      reconcileInteractionAfterTurnChange();
+      renderAll();
+      return;
+    }
+  }
+
+  const wasAtLive = isViewingLive();
+  gameState = applyDicePassTurn(gameState);
+  if (wasAtLive) {
+    viewPly = gameState.moveHistory.length;
+  }
+  clearSelection();
+  playSound('dicePass');
+  renderAll();
+}
+
+function scheduleDiceAutoPassIfNeeded() {
+  clearDiceAutoPassTimer();
+  if (typeof window === 'undefined') return;
+  if (
+    !isViewingLive() ||
+    gameState.status !== 'playing' ||
+    !getVariantDef(gameState).diceChess ||
+    !gameState.dice?.noLegalMoves ||
+    opponentDisconnected
+  ) {
+    return;
+  }
+  if (net.mode === 'waiting' || net.mode === 'setup' || net.mode === 'joining' || net.mode === 'editor') {
+    return;
+  }
+  if (net.mode === 'online' && net.role !== 'host') {
+    return;
+  }
+  diceAutoPassTimer = setTimeout(() => {
+    diceAutoPassTimer = null;
+    executeDicePassTurn();
+  }, 1250);
+}
+
+function handleDieCardClick(dieIndex) {
+  if (!isViewingLive() || gameState.status !== 'playing') return;
+  if (!getVariantDef(gameState).diceChess || !gameState.dice?.values) return;
+  if (net.mode === 'online' && gameState.turn !== net.myColor) return;
+
+  const val = gameState.dice.values[dieIndex === 2 ? 1 : 0];
+  const targetType = DICE_PIECE_MAP[val];
+  const isWild = Boolean(gameState.dice.isDoubles);
+
+  const candidates = [];
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      const code = gameState.board[r][c];
+      if (!code) continue;
+      const pCol = getPieceColor(code);
+      const pType = getPieceType(code);
+      const matchesDie = isWild
+        ? pType === targetType && pCol === gameState.turn
+        : pCol === gameState.turn && pType === targetType;
+      if (matchesDie && getLegalMovesForSquare(gameState, r, c).length > 0) {
+        candidates.push({ r, c });
+      }
+    }
+  }
+
+  if (isWild && candidates.length === 0) {
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (gameState.board[r][c] && getLegalMovesForSquare(gameState, r, c).length > 0) {
+          candidates.push({ r, c });
+        }
+      }
+    }
+  }
+
+  if (candidates.length === 0) return;
+
+  let nextIdx = 0;
+  if (selectedSq) {
+    const curIdx = candidates.findIndex((s) => s.r === selectedSq.r && s.c === selectedSq.c);
+    if (curIdx >= 0) {
+      nextIdx = (curIdx + 1) % candidates.length;
+    }
+  }
+  const chosen = candidates[nextIdx];
+  selectSquare(chosen.r, chosen.c);
+  renderAll();
+}
+
+function renderDiceBar() {
+  if (!dom.diceBar) return;
+  const vDef = getVariantDef(gameState);
+  const showDice = Boolean(
+    vDef.diceChess &&
+      net.mode !== 'editor' &&
+      net.mode !== 'setup' &&
+      net.mode !== 'waiting' &&
+      net.mode !== 'joining'
+  );
+  dom.diceBar.classList.toggle('hidden', !showDice);
+  if (!showDice) {
+    clearDiceAutoPassTimer();
+    return;
+  }
+
+  const viewingLive = isViewingLive();
+  const frame = getDisplayedFrame();
+  const diceState = viewingLive ? gameState.dice : frame.dice || gameState.dice;
+  if (!diceState || !Array.isArray(diceState.values) || diceState.values.length !== 2) {
+    dom.diceBar.classList.add('hidden');
+    clearDiceAutoPassTimer();
+    return;
+  }
+
+  const [v1, v2] = diceState.values;
+  const t1 = DICE_PIECE_MAP[v1] || 'p';
+  const t2 = DICE_PIECE_MAP[v2] || 'p';
+  const turnColor = viewingLive ? gameState.turn : frame.turn || gameState.turn;
+  const isDoubles = Boolean(diceState.isDoubles);
+  const noMoves = Boolean(diceState.noLegalMoves);
+
+  let hasMoves1 = false;
+  let hasMoves2 = false;
+  if (viewingLive && gameState.status === 'playing' && !noMoves) {
+    if (isDoubles) {
+      hasMoves1 = true;
+      hasMoves2 = true;
+    } else {
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          const code = gameState.board[r][c];
+          if (!code || getPieceColor(code) !== turnColor) continue;
+          const pType = getPieceType(code);
+          if (pType === t1 && !hasMoves1 && getLegalMovesForSquare(gameState, r, c).length > 0) {
+            hasMoves1 = true;
+          }
+          if (pType === t2 && !hasMoves2 && getLegalMovesForSquare(gameState, r, c).length > 0) {
+            hasMoves2 = true;
+          }
+        }
+      }
+    }
+  }
+
+  const dis1 = viewingLive && gameState.status === 'playing' ? !hasMoves1 : false;
+  const dis2 = viewingLive && gameState.status === 'playing' ? !hasMoves2 : false;
+
+  renderDieFaceSvg(dom.dieSvg1, v1, isDoubles, dis1);
+  renderDieFaceSvg(dom.dieSvg2, v2, isDoubles, dis2);
+
+  if (dom.diePieceImg1) {
+    dom.diePieceImg1.src = getPieceSvgDataUri(turnColor + t1);
+    dom.diePieceImg1.alt = PIECE_DEFS[t1]?.name || t1;
+  }
+  if (dom.diePieceImg2) {
+    dom.diePieceImg2.src = getPieceSvgDataUri(turnColor + t2);
+    dom.diePieceImg2.alt = PIECE_DEFS[t2]?.name || t2;
+  }
+  if (dom.dieLabel1) {
+    dom.dieLabel1.textContent = PIECE_DEFS[t1]?.name || 'Pawn';
+  }
+  if (dom.dieLabel2) {
+    dom.dieLabel2.textContent = PIECE_DEFS[t2]?.name || 'Pawn';
+  }
+
+  const selCode =
+    viewingLive && selectedSq ? gameState.board[selectedSq.r]?.[selectedSq.c] : null;
+  const selType = selCode ? getPieceType(selCode) : null;
+
+  if (dom.dieCard1) {
+    dom.dieCard1.classList.toggle('die-doubles', isDoubles && !noMoves);
+    dom.dieCard1.classList.toggle('die-disabled', dis1);
+    dom.dieCard1.classList.toggle('die-selected', Boolean(!dis1 && selType === t1));
+  }
+  if (dom.dieCard2) {
+    dom.dieCard2.classList.toggle('die-doubles', isDoubles && !noMoves);
+    dom.dieCard2.classList.toggle('die-disabled', dis2);
+    dom.dieCard2.classList.toggle('die-selected', Boolean(!dis2 && selType === t2));
+  }
+
+  const rollKey = `${gameState.moveHistory.length}:${v1}-${v2}:${turnColor}`;
+  if (viewingLive && rollKey !== lastRenderedDiceKey) {
+    lastRenderedDiceKey = rollKey;
+    if (dom.dieCard1 && dom.dieCard2) {
+      dom.dieCard1.classList.remove('rolling');
+      dom.dieCard2.classList.remove('rolling');
+      if (typeof dom.dieCard1.offsetWidth === 'number') {
+        void dom.dieCard1.offsetWidth;
+      }
+      dom.dieCard1.classList.add('rolling');
+      dom.dieCard2.classList.add('rolling');
+    }
+  }
+
+  const showCastleBadge = Boolean(
+    !noMoves &&
+      ((v1 === 6 && v2 === 4) || (v1 === 4 && v2 === 6))
+  );
+  if (dom.diceDoublesBadge) {
+    dom.diceDoublesBadge.classList.toggle('hidden', !isDoubles);
+  }
+  if (dom.diceCastleBadge) {
+    dom.diceCastleBadge.classList.toggle('hidden', !showCastleBadge);
+  }
+  if (dom.diceSkipBadge) {
+    dom.diceSkipBadge.classList.toggle('hidden', !noMoves);
+  }
+  if (dom.diceSkipBtn) {
+    dom.diceSkipBtn.classList.toggle(
+      'hidden',
+      !(viewingLive && gameState.status === 'playing' && noMoves)
+    );
+  }
+
+  if (dom.dicePromptText) {
+    const sideLabel = turnColor === 'w' ? 'White' : 'Black';
+    const n1 = PIECE_DEFS[t1]?.name || 'Pawn';
+    const n2 = PIECE_DEFS[t2]?.name || 'Pawn';
+    if (noMoves) {
+      dom.dicePromptText.textContent = `${sideLabel} rolled ${n1} (${v1}) & ${n2} (${v2}) — no legal moves! Turn skipped...`;
+    } else if (isDoubles) {
+      dom.dicePromptText.textContent = `${sideLabel} rolled Doubles (${v1}-${v2}) — Wild! Move any piece on the board.`;
+    } else if (showCastleBadge) {
+      dom.dicePromptText.textContent = `${sideLabel}: move ${n1}, ${n2}, or Castle if legal`;
+    } else {
+      dom.dicePromptText.textContent = `${sideLabel}: move ${n1} (${v1}) or ${n2} (${v2})`;
+    }
+  }
+
+  scheduleDiceAutoPassIfNeeded();
+}
+
 function renderAll() {
   if (typeof document === 'undefined') return;
   renderBoard();
+  renderDiceBar();
   renderPlayerBars();
   renderStatusAndControls();
   renderMoveHistory();
@@ -7564,6 +8230,16 @@ function initUI() {
     });
   }
 
+  if (dom.dieCard1) {
+    dom.dieCard1.addEventListener('click', () => handleDieCardClick(1));
+  }
+  if (dom.dieCard2) {
+    dom.dieCard2.addEventListener('click', () => handleDieCardClick(2));
+  }
+  if (dom.diceSkipBtn) {
+    dom.diceSkipBtn.addEventListener('click', () => executeDicePassTurn());
+  }
+
   // Live 100ms clock refresh
   if (clockState.intervalId) clearInterval(clockState.intervalId);
   clockState.intervalId = setInterval(tickClocksUIAndAuthority, 100);
@@ -7695,6 +8371,12 @@ if (typeof module !== 'undefined' && module.exports) {
     createCustomState,
     validateCustomPosition,
     goHome,
-    editorState
+    editorState,
+    DICE_PIECE_MAP,
+    PIECE_TO_DIE_MAP,
+    canCastleWithDice,
+    setDiceRoll,
+    rollDiceForState,
+    applyDicePassTurn
   };
 }
