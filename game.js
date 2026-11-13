@@ -2449,14 +2449,46 @@ let secretPickCol = null;
 // Peer-to-Peer Chat Session State (persists across rematches in the same room)
 const CHAT_MAX_MESSAGES = 120;
 const CHAT_MAX_TEXT_LENGTH = 500;
-const CHAT_MAX_IMAGE_DATA_URL_LENGTH = 180000;
-const CHAT_TARGET_IMAGE_DATA_URL_LENGTH = 120000;
+
+const CHESS_CHAT_BADGES = Object.freeze({
+  brilliant: { label: 'Brilliant', symbol: '!!', bg: '#1baca6', ring: '#14847f', text: '!!', fs: 13.5 },
+  great: { label: 'Great', symbol: '!', bg: '#5c8bb0', ring: '#446a89', text: '!', fs: 17 },
+  best: { label: 'Best', symbol: '*', bg: '#81b64c', ring: '#618f34', icon: 'star' },
+  excellent: { label: 'Excellent', symbol: '+', bg: '#96bc4b', ring: '#719232', icon: 'thumb' },
+  good: { label: 'Good', symbol: 'ok', bg: '#86a666', ring: '#65804b', icon: 'check' },
+  book: { label: 'Book', symbol: 'Book', bg: '#a88865', ring: '#816547', icon: 'book' },
+  inaccuracy: { label: 'Inaccuracy', symbol: '?!', bg: '#f0c15c', ring: '#bf9433', text: '?!', fs: 13 },
+  mistake: { label: 'Mistake', symbol: '?', bg: '#e58f2a', ring: '#b36b17', text: '?', fs: 16.5 },
+  miss: { label: 'Miss', symbol: 'x', bg: '#ee6b55', ring: '#c14935', icon: 'miss' },
+  blunder: { label: 'Blunder', symbol: '??', bg: '#ca3431', ring: '#99221f', text: '??', fs: 13.5 }
+});
+
+const CHAT_QUICK_EMOJIS = Object.freeze(
+  [
+    [0x1F44B],
+    [0x1F60A],
+    [0x1F602],
+    [0x1F62E],
+    [0x1F914],
+    [0x1F624],
+    [0x1F62D],
+    [0x1F480],
+    [0x1F525],
+    [0x1F451],
+    [0x265F, 0xFE0F],
+    [0x1F3B2],
+    [0x1F91D],
+    [0x1F389],
+    [0x1F3C6],
+    [0x1F44F]
+  ].map((cps) => String.fromCodePoint(...cps))
+);
 
 let chatMessages = [];
 let unreadChatCount = 0;
 let seenChatIds = new Set();
-let stagedChatImage = null; // { dataUrl: string, name: string } | null
-let desktopSidebarTab = 'moves'; // 'moves' | 'chat'
+let chatPickerOpen = false;
+let desktopSidebarTab = 'chat'; // 'chat' | 'moves'
 
 const editorState = {
   active: false,
@@ -2522,23 +2554,50 @@ function sanitizeChatText(raw) {
     .slice(0, CHAT_MAX_TEXT_LENGTH);
 }
 
-function sanitizeChatImageUrl(raw) {
-  if (typeof raw !== 'string') return null;
-  if (raw.length === 0 || raw.length > CHAT_MAX_IMAGE_DATA_URL_LENGTH) return null;
-  if (!/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(raw)) return null;
-  return raw;
+function tokenizeChatText(raw) {
+  const str = typeof raw === 'string' ? raw : '';
+  const tokens = [];
+  const re = /:([a-z]{2,14}):/g;
+  let lastIndex = 0;
+  let match;
+  while ((match = re.exec(str)) !== null) {
+    const key = match[1];
+    if (!Object.prototype.hasOwnProperty.call(CHESS_CHAT_BADGES, key)) {
+      continue;
+    }
+    if (match.index > lastIndex) {
+      tokens.push({ type: 'text', value: str.slice(lastIndex, match.index) });
+    }
+    tokens.push({ type: 'badge', key });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < str.length) {
+    tokens.push({ type: 'text', value: str.slice(lastIndex) });
+  }
+  return tokens;
+}
+
+function isStickerOnlyChatTokens(tokens) {
+  let badgeCount = 0;
+  for (const tok of tokens) {
+    if (tok.type === 'badge') {
+      badgeCount++;
+    } else if (tok.type === 'text' && tok.value.trim().length > 0) {
+      return false;
+    }
+  }
+  return badgeCount >= 1 && badgeCount <= 3;
 }
 
 function normalizeIncomingChatPacket(data) {
   if (!data || typeof data !== 'object' || data.type !== 'chat_msg') return null;
   const text = sanitizeChatText(data.text);
-  const imageDataUrl = sanitizeChatImageUrl(data.imageDataUrl);
-  if (!text && !imageDataUrl) return null;
+  if (!text) return null;
   const rawId = typeof data.id === 'string' ? data.id.slice(0, 80) : '';
   const id = rawId || `peer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const ts = Number.isFinite(data.ts) && data.ts > 0 ? Math.floor(data.ts) : Date.now();
   const senderName = sanitizePlayerName(data.senderName || net.peerName || 'Opponent');
-  return { id, ts, text, imageDataUrl, senderName };
+  return { id, ts, text, senderName };
 }
 
 function isValidCoordObj(obj) {
@@ -3281,7 +3340,7 @@ function sendCurrentMatchStartPacket() {
   });
 }
 
-function onHostGuestChannelReady(isReconnect = false) {
+function onHostGuestChannelReady(wasActuallyDisconnected = false) {
   if (net.role !== 'host') return;
   if (net.mode === 'waiting') {
     net.mode = 'online';
@@ -3294,13 +3353,12 @@ function onHostGuestChannelReady(isReconnect = false) {
     return;
   }
   if (net.mode === 'online') {
-    const wasDisconnected = opponentDisconnected || isReconnect;
+    const shouldAnnounceReconnect = Boolean(opponentDisconnected || wasActuallyDisconnected);
     opponentDisconnected = false;
     clearOpponentDisconnectGraceTimer();
     startHeartbeat();
-    if (wasDisconnected) {
-      setGameFeedback('Opponent reconnected!');
-      setTimeout(() => setGameFeedback(''), 3000);
+    if (shouldAnnounceReconnect) {
+      showTransientFeedback('Opponent reconnected!');
     }
     if (gameState.moveHistory.length === 0) {
       sendCurrentMatchStartPacket();
@@ -3425,7 +3483,7 @@ function handleDecodedRelayEnvelope(srcId, env, via) {
     if (via === 'relay') sendRawSignalingEnvelope(srcId, ackEnv);
     else if (via === 'bc') sendViaBroadcastChannel(ackEnv);
 
-    onHostGuestChannelReady(Boolean(env.reconnect));
+    onHostGuestChannelReady(Boolean(opponentDisconnected));
     return;
   }
 
@@ -3443,8 +3501,7 @@ function handleDecodedRelayEnvelope(srcId, env, via) {
       guestReconnectAttempts = 0;
       clearOpponentDisconnectGraceTimer();
       opponentDisconnected = false;
-      setGameFeedback('Reconnected to game!');
-      setTimeout(() => setGameFeedback(''), 3000);
+      showTransientFeedback('Reconnected to game!');
     }
     startHeartbeat();
     sendPacket(net.conn, {
@@ -3702,6 +3759,7 @@ function handleHostIncomingData(data) {
     if (opponentDisconnected) {
       opponentDisconnected = false;
       clearOpponentDisconnectGraceTimer();
+      showTransientFeedback('Opponent reconnected!');
       renderAll();
     }
     return;
@@ -3712,6 +3770,7 @@ function handleHostIncomingData(data) {
     if (opponentDisconnected) {
       opponentDisconnected = false;
       clearOpponentDisconnectGraceTimer();
+      showTransientFeedback('Opponent reconnected!');
     }
     if (data.type === 'hello' && gameState.moveHistory.length === 0) {
       sendCurrentMatchStartPacket();
@@ -3907,6 +3966,7 @@ function handleGuestIncomingData(data) {
     if (opponentDisconnected) {
       opponentDisconnected = false;
       clearOpponentDisconnectGraceTimer();
+      showTransientFeedback('Reconnected to game!');
       renderAll();
     }
     return;
@@ -4180,13 +4240,13 @@ function cleanupNetworkSession() {
   chatMessages = [];
   unreadChatCount = 0;
   seenChatIds.clear();
-  stagedChatImage = null;
   opponentDisconnected = false;
   clockState.timed = false;
   clockState.running = false;
   premoveQueue = [];
   clearBoardTransientUI();
-  closeChatLightbox();
+  closeChatEmojiPicker();
+  closeLeaveConfirmModal();
   renderChatUI();
 }
 
@@ -4328,6 +4388,7 @@ function attemptGuestReconnect() {
       setupPeerRelayHook(peer);
       setupBroadcastChannelForRoom(net.roomCode, peer);
       peer.on('open', () => {
+        if (net.peer !== peer || net.mode !== 'online' || isLogicalConnOpen(net.conn)) return;
         connectToHostForReconnect(peer);
       });
       peer.on('disconnected', () => {
@@ -4391,12 +4452,14 @@ function connectToHostForReconnect(peer) {
 
     const onReconnected = () => {
       if (net.conn !== newConn) return;
+      const wasDisconnected = opponentDisconnected;
       guestReconnectAttempts = 0;
       clearOpponentDisconnectGraceTimer();
       opponentDisconnected = false;
       startHeartbeat();
-      setGameFeedback('Reconnected to game!');
-      setTimeout(() => setGameFeedback(''), 3000);
+      if (wasDisconnected) {
+        showTransientFeedback('Reconnected to game!');
+      }
       sendPacket(newConn, {
         type: 'hello',
         name: net.myName,
@@ -4517,6 +4580,7 @@ function createGameRoom(retryCount = 0) {
         net.conn.close();
       } catch (_) {}
     }
+    const wasDisconnected = opponentDisconnected;
     net.conn = incomingConn;
     net.pendingClaimConn = incomingConn;
     net.pendingClaimAt = Date.now();
@@ -4531,7 +4595,7 @@ function createGameRoom(retryCount = 0) {
       if (net.pendingClaimConn === incomingConn) {
         net.pendingClaimConn = null;
       }
-      onHostGuestChannelReady(isGameActive);
+      onHostGuestChannelReady(wasDisconnected);
     };
 
     if (incomingConn.open) activateGuest();
@@ -4659,8 +4723,10 @@ function joinGameRoom(rawCode) {
     }
   });
 
+  let initialJoinStarted = false;
   peer.on('open', () => {
-    if (net.peer !== peer) return;
+    if (net.peer !== peer || initialJoinStarted || net.mode !== 'joining') return;
+    initialJoinStarted = true;
 
     const attemptRelayAndHello = () => {
       if (net.peer !== peer || net.mode !== 'joining') return;
@@ -5034,19 +5100,16 @@ function cacheDom() {
   dom.chatSection = document.getElementById('chat-section');
   dom.chatStatusPill = document.getElementById('chat-status-pill');
   dom.chatMessages = document.getElementById('chat-messages');
-  dom.chatStagedPreview = document.getElementById('chat-staged-preview');
-  dom.chatStagedImg = document.getElementById('chat-staged-img');
-  dom.chatStagedName = document.getElementById('chat-staged-name');
-  dom.chatRemoveImageBtn = document.getElementById('chat-remove-image-btn');
+  dom.chatEmojiPicker = document.getElementById('chat-emoji-picker');
   dom.chatStatusNote = document.getElementById('chat-status-note');
   dom.chatForm = document.getElementById('chat-form');
-  dom.chatImageInput = document.getElementById('chat-image-input');
-  dom.chatAttachBtn = document.getElementById('chat-attach-btn');
+  dom.chatEmojiBtn = document.getElementById('chat-emoji-btn');
   dom.chatTextInput = document.getElementById('chat-text-input');
   dom.chatSendBtn = document.getElementById('chat-send-btn');
-  dom.chatLightbox = document.getElementById('chat-lightbox');
-  dom.chatLightboxClose = document.getElementById('chat-lightbox-close');
-  dom.chatLightboxImg = document.getElementById('chat-lightbox-img');
+  dom.leaveConfirmBackdrop = document.getElementById('leave-confirm-backdrop');
+  dom.leaveConfirmModal = document.getElementById('leave-confirm-modal');
+  dom.leaveConfirmStayBtn = document.getElementById('leave-confirm-stay-btn');
+  dom.leaveConfirmYesBtn = document.getElementById('leave-confirm-yes-btn');
 
   dom.localVariantBar = document.getElementById('local-variant-bar');
   dom.localControls = document.getElementById('local-controls');
@@ -8623,7 +8686,13 @@ function buildPGNString() {
 
 // --- Controls, Setup Panel, Themes & Event Listeners ---
 
+let gameFeedbackClearTimer = null;
+
 function setGameFeedback(msg) {
+  if (gameFeedbackClearTimer) {
+    clearTimeout(gameFeedbackClearTimer);
+    gameFeedbackClearTimer = null;
+  }
   if (!dom.gameFeedback) return;
   if (!msg) {
     dom.gameFeedback.textContent = '';
@@ -8632,6 +8701,17 @@ function setGameFeedback(msg) {
     dom.gameFeedback.textContent = msg;
     dom.gameFeedback.classList.remove('hidden');
   }
+}
+
+function showTransientFeedback(msg, durationMs = 3000) {
+  setGameFeedback(msg);
+  if (!msg) return;
+  gameFeedbackClearTimer = setTimeout(() => {
+    gameFeedbackClearTimer = null;
+    if (dom.gameFeedback && dom.gameFeedback.textContent === msg) {
+      setGameFeedback('');
+    }
+  }, durationMs);
 }
 
 function getInviteVariantSlug() {
@@ -8738,38 +8818,222 @@ function renderChatBadges() {
   }
 }
 
-function renderStagedChatPreview() {
-  if (!dom.chatStagedPreview) return;
-  const hasImg = Boolean(stagedChatImage && stagedChatImage.dataUrl);
-  dom.chatStagedPreview.classList.toggle('hidden', !hasImg);
-  if (hasImg) {
-    if (dom.chatStagedImg) dom.chatStagedImg.src = stagedChatImage.dataUrl;
-    if (dom.chatStagedName) dom.chatStagedName.textContent = stagedChatImage.name || 'Image ready';
-  } else {
-    if (dom.chatStagedImg && typeof dom.chatStagedImg.removeAttribute === 'function') {
-      dom.chatStagedImg.removeAttribute('src');
+function createSvgChild(tag, attrs = {}) {
+  const el =
+    typeof document.createElementNS === 'function'
+      ? document.createElementNS('http://www.w3.org/2000/svg', tag)
+      : document.createElement(tag);
+  if (el && typeof el.setAttribute === 'function') {
+    for (const [k, v] of Object.entries(attrs)) {
+      el.setAttribute(k, String(v));
     }
-    if (dom.chatStagedName) dom.chatStagedName.textContent = '';
+  }
+  return el;
+}
+
+function createChessBadgeElement(key, className = 'chess-inline-badge') {
+  const def = Object.prototype.hasOwnProperty.call(CHESS_CHAT_BADGES, key)
+    ? CHESS_CHAT_BADGES[key]
+    : null;
+  if (!def) return document.createTextNode(`:${key}:`);
+
+  const svg = createSvgChild('svg', {
+    viewBox: '0 0 32 32',
+    class: className,
+    role: 'img',
+    'aria-label': `${def.label} (${def.symbol})`
+  });
+  if (typeof svg.setAttribute === 'function') {
+    svg.setAttribute('title', `${def.label} (${def.symbol})`);
+  }
+
+  svg.appendChild(
+    createSvgChild('circle', {
+      cx: 16,
+      cy: 16,
+      r: 14.5,
+      fill: def.bg,
+      stroke: def.ring,
+      'stroke-width': 1.4
+    })
+  );
+  svg.appendChild(
+    createSvgChild('path', {
+      d: 'M7.5 11.2a11.5 11.5 0 0 1 17 0',
+      fill: 'none',
+      stroke: 'rgba(255,255,255,0.28)',
+      'stroke-width': 1.4,
+      'stroke-linecap': 'round'
+    })
+  );
+
+  if (def.text) {
+    const txt = createSvgChild('text', {
+      x: 16,
+      y: 21.5,
+      'text-anchor': 'middle',
+      fill: '#ffffff',
+      'font-family': 'system-ui, -apple-system, Segoe UI, Arial, sans-serif',
+      'font-weight': '900',
+      'font-size': def.fs || 15,
+      'letter-spacing': def.text.length > 1 ? '-0.6' : '0'
+    });
+    txt.textContent = def.text;
+    svg.appendChild(txt);
+  } else if (def.icon === 'star') {
+    svg.appendChild(
+      createSvgChild('polygon', {
+        points: '16,6.8 18.8,12.5 25.2,13.4 20.6,17.9 21.7,24.2 16,21.2 10.3,24.2 11.4,17.9 6.8,13.4 13.2,12.5',
+        fill: '#ffffff'
+      })
+    );
+  } else if (def.icon === 'thumb') {
+    svg.appendChild(
+      createSvgChild('path', {
+        d: 'M14.3 8.4c.6 0 1.1.4 1.2 1l.4 3.2h4.4c1.3 0 2.3 1.2 1.9 2.5l-1.3 5.2c-.3 1-1.2 1.7-2.2 1.7H13V12.8l1.2-3.9c.1-.3.1-.5.1-.5zM9 13h2.6v9H9v-9z',
+        fill: '#ffffff'
+      })
+    );
+  } else if (def.icon === 'check') {
+    svg.appendChild(
+      createSvgChild('path', {
+        d: 'M9.6 16.6l4.2 4.2 8.6-9.1',
+        fill: 'none',
+        stroke: '#ffffff',
+        'stroke-width': 3.2,
+        'stroke-linecap': 'round',
+        'stroke-linejoin': 'round'
+      })
+    );
+  } else if (def.icon === 'book') {
+    svg.appendChild(
+      createSvgChild('path', {
+        d: 'M7.5 10.6c2.7-.9 5.5-.6 7.7.7v11.4c-2.2-1.2-5-1.5-7.7-.6V10.6zm17 0c-2.7-.9-5.5-.6-7.7.7v11.4c2.2-1.2 5-1.5 7.7-.6V10.6z',
+        fill: '#ffffff'
+      })
+    );
+  } else if (def.icon === 'miss') {
+    svg.appendChild(
+      createSvgChild('path', {
+        d: 'M10.8 10.8l10.4 10.4M21.2 10.8L10.8 21.2',
+        fill: 'none',
+        stroke: '#ffffff',
+        'stroke-width': 3.2,
+        'stroke-linecap': 'round'
+      })
+    );
+  }
+
+  return svg;
+}
+
+function renderChatEmojiPicker() {
+  if (!dom.chatEmojiPicker) return;
+
+  const badgeSection = document.createElement('div');
+  badgeSection.className = 'chat-picker-section';
+  const badgeLabel = document.createElement('span');
+  badgeLabel.className = 'chat-picker-label';
+  badgeLabel.textContent = 'Chess.com Reactions';
+  badgeSection.appendChild(badgeLabel);
+
+  const badgeGrid = document.createElement('div');
+  badgeGrid.className = 'chat-badge-grid';
+  for (const [key, def] of Object.entries(CHESS_CHAT_BADGES)) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chess-badge-btn';
+    btn.dataset.chatBadge = key;
+    if (typeof btn.setAttribute === 'function') {
+      btn.setAttribute('title', `${def.label} (${def.symbol}) — inserts :${key}:`);
+      btn.setAttribute('aria-label', `${def.label} ${def.symbol}`);
+    }
+    btn.appendChild(createChessBadgeElement(key, 'chess-inline-badge'));
+    const nameEl = document.createElement('span');
+    nameEl.className = 'chat-badge-name';
+    nameEl.textContent = def.label;
+    btn.appendChild(nameEl);
+    btn.addEventListener('click', () => insertChatToken(`:${key}:`, true));
+    badgeGrid.appendChild(btn);
+  }
+  badgeSection.appendChild(badgeGrid);
+
+  const emojiSection = document.createElement('div');
+  emojiSection.className = 'chat-picker-section';
+  const emojiLabel = document.createElement('span');
+  emojiLabel.className = 'chat-picker-label';
+  emojiLabel.textContent = 'Emojis';
+  emojiSection.appendChild(emojiLabel);
+
+  const emojiGrid = document.createElement('div');
+  emojiGrid.className = 'chat-emoji-grid';
+  for (const emoji of CHAT_QUICK_EMOJIS) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'chat-emoji-item';
+    btn.textContent = emoji;
+    btn.dataset.chatEmoji = emoji;
+    if (typeof btn.setAttribute === 'function') {
+      btn.setAttribute('aria-label', `Insert ${emoji}`);
+    }
+    btn.addEventListener('click', () => insertChatToken(emoji, false));
+    emojiGrid.appendChild(btn);
+  }
+  emojiSection.appendChild(emojiGrid);
+
+  dom.chatEmojiPicker.replaceChildren(badgeSection, emojiSection);
+}
+
+function setChatEmojiPickerOpen(open) {
+  chatPickerOpen = Boolean(open) && net.mode === 'online' && !opponentDisconnected;
+  if (dom.chatEmojiPicker) {
+    dom.chatEmojiPicker.classList.toggle('hidden', !chatPickerOpen);
+  }
+  if (dom.chatEmojiBtn) {
+    dom.chatEmojiBtn.classList.toggle('active', chatPickerOpen);
+    if (typeof dom.chatEmojiBtn.setAttribute === 'function') {
+      dom.chatEmojiBtn.setAttribute('aria-expanded', String(chatPickerOpen));
+    }
   }
 }
 
-function clearStagedChatImage() {
-  stagedChatImage = null;
-  if (dom.chatImageInput) dom.chatImageInput.value = '';
-  renderStagedChatPreview();
+function openChatEmojiPicker() {
+  if (dom.chatEmojiPicker && !dom.chatEmojiPicker.children?.length) {
+    renderChatEmojiPicker();
+  }
+  setChatEmojiPickerOpen(true);
 }
 
-function openChatLightbox(safeSrc) {
-  const valid = sanitizeChatImageUrl(safeSrc);
-  if (!valid || !dom.chatLightbox || !dom.chatLightboxImg) return;
-  dom.chatLightboxImg.src = valid;
-  dom.chatLightbox.classList.remove('hidden');
+function closeChatEmojiPicker() {
+  setChatEmojiPickerOpen(false);
 }
 
-function closeChatLightbox() {
-  if (dom.chatLightbox) dom.chatLightbox.classList.add('hidden');
-  if (dom.chatLightboxImg && typeof dom.chatLightboxImg.removeAttribute === 'function') {
-    dom.chatLightboxImg.removeAttribute('src');
+function toggleChatEmojiPicker() {
+  if (chatPickerOpen) {
+    closeChatEmojiPicker();
+  } else {
+    openChatEmojiPicker();
+  }
+}
+
+function insertChatToken(token, padWithSpaces = false) {
+  if (!dom.chatTextInput || dom.chatTextInput.disabled) return;
+  const cur = dom.chatTextInput.value || '';
+  const start =
+    typeof dom.chatTextInput.selectionStart === 'number' ? dom.chatTextInput.selectionStart : cur.length;
+  const end =
+    typeof dom.chatTextInput.selectionEnd === 'number' ? dom.chatTextInput.selectionEnd : start;
+  const before = cur.slice(0, start);
+  const after = cur.slice(end);
+  const lead = padWithSpaces && before.length > 0 && !/\s$/.test(before) ? ' ' : '';
+  const trail = padWithSpaces ? ' ' : '';
+  const inserted = `${lead}${token}${trail}`;
+  const nextVal = (before + inserted + after).slice(0, CHAT_MAX_TEXT_LENGTH);
+  dom.chatTextInput.value = nextVal;
+  const caret = Math.min(nextVal.length, before.length + inserted.length);
+  if (typeof dom.chatTextInput.setSelectionRange === 'function' && !isMobileViewport()) {
+    dom.chatTextInput.focus();
+    dom.chatTextInput.setSelectionRange(caret, caret);
   }
 }
 
@@ -8792,8 +9056,8 @@ function renderChatMessages(forceRebuild = false) {
     empty.className = 'chat-empty';
     empty.textContent =
       net.mode === 'online'
-        ? 'No messages yet. Say hi or share an image!'
-        : 'Connect with a friend online to chat and share images peer-to-peer.';
+        ? 'No messages yet. Say hi or send a Chess.com badge!'
+        : 'Connect with a friend online to chat peer-to-peer.';
     dom.chatMessages.replaceChildren(empty);
     return;
   }
@@ -8813,21 +9077,19 @@ function renderChatMessages(forceRebuild = false) {
     bubble.appendChild(meta);
 
     if (msg.text) {
+      const tokens = tokenizeChatText(msg.text);
+      const stickerOnly = isStickerOnlyChatTokens(tokens);
       const p = document.createElement('p');
-      p.className = 'chat-msg-text';
-      p.textContent = msg.text;
+      p.className = stickerOnly ? 'chat-msg-text sticker-only' : 'chat-msg-text';
+      const badgeClass = stickerOnly ? 'chess-sticker-badge' : 'chess-inline-badge';
+      for (const tok of tokens) {
+        if (tok.type === 'badge') {
+          p.appendChild(createChessBadgeElement(tok.key, badgeClass));
+        } else if (!stickerOnly && tok.value) {
+          p.appendChild(document.createTextNode(tok.value));
+        }
+      }
       bubble.appendChild(p);
-    }
-
-    const safeImg = sanitizeChatImageUrl(msg.imageDataUrl);
-    if (safeImg) {
-      const img = document.createElement('img');
-      img.className = 'chat-msg-img';
-      img.src = safeImg;
-      img.alt = 'Shared match image';
-      img.loading = 'lazy';
-      img.addEventListener('click', () => openChatLightbox(safeImg));
-      bubble.appendChild(img);
     }
 
     frag.appendChild(bubble);
@@ -8849,20 +9111,22 @@ function renderChatUI() {
   }
 
   if (dom.chatTextInput) dom.chatTextInput.disabled = !onlineReady;
-  if (dom.chatAttachBtn) dom.chatAttachBtn.disabled = !onlineReady;
+  if (dom.chatEmojiBtn) dom.chatEmojiBtn.disabled = !onlineReady;
   if (dom.chatSendBtn) dom.chatSendBtn.disabled = !onlineReady;
+  if (!onlineReady && chatPickerOpen) {
+    closeChatEmojiPicker();
+  }
 
   if (!onlineReady) {
     setChatStatusNote(
       net.mode === 'online'
         ? 'Connection paused — chat resumes when your opponent reconnects.'
-        : 'Join or create an online game to chat and share images.'
+        : 'Join or create an online game to chat.'
     );
   } else {
     setChatStatusNote('');
   }
 
-  renderStagedChatPreview();
   renderChatBadges();
   renderChatMessages();
 }
@@ -8881,8 +9145,7 @@ function appendChatMessage(entry, fromPeer) {
     ts: entry.ts || Date.now(),
     mine: Boolean(entry.mine),
     senderName: entry.senderName || (entry.mine ? net.myName || 'You' : net.peerName || 'Opponent'),
-    text: entry.text || '',
-    imageDataUrl: entry.imageDataUrl || null
+    text: entry.text || ''
   });
   if (chatMessages.length > CHAT_MAX_MESSAGES) {
     chatMessages = chatMessages.slice(-CHAT_MAX_MESSAGES);
@@ -8910,106 +9173,13 @@ function handleIncomingChatPacket(data) {
   );
 }
 
-async function prepareChatImageDataUrl(file) {
-  if (!file || typeof file.type !== 'string' || !file.type.startsWith('image/')) {
-    throw new Error('Please choose a valid image file (PNG, JPEG, or WebP).');
-  }
-  if (file.size > 15 * 1024 * 1024) {
-    throw new Error('Image is too large (max 15 MB).');
-  }
-
-  const loadedUrl = await new Promise((resolve, reject) => {
-    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
-      resolve({ url: URL.createObjectURL(file), revoke: true });
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => resolve({ url: String(reader.result || ''), revoke: false });
-    reader.onerror = () => reject(new Error('Could not read image file.'));
-    reader.readAsDataURL(file);
-  });
-
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const el = new Image();
-      el.onload = () => resolve(el);
-      el.onerror = () => reject(new Error('Unsupported or corrupted image.'));
-      el.src = loadedUrl.url;
-    });
-
-    const origW = Math.max(1, img.naturalWidth || img.width || 1);
-    const origH = Math.max(1, img.naturalHeight || img.height || 1);
-
-    const tryEncode = (maxDim, mime, quality) => {
-      const scale = Math.min(1, maxDim / Math.max(origW, origH));
-      const w = Math.max(1, Math.round(origW * scale));
-      const h = Math.max(1, Math.round(origH * scale));
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return null;
-      if (mime === 'image/jpeg') {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, w, h);
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      return canvas.toDataURL(mime, quality);
-    };
-
-    const attempts = [
-      [640, 'image/webp', 0.82],
-      [640, 'image/webp', 0.68],
-      [640, 'image/jpeg', 0.78],
-      [640, 'image/jpeg', 0.64],
-      [480, 'image/jpeg', 0.62],
-      [360, 'image/jpeg', 0.56]
-    ];
-
-    for (const [maxDim, mime, quality] of attempts) {
-      const candidate = tryEncode(maxDim, mime, quality);
-      if (candidate && candidate.length <= CHAT_TARGET_IMAGE_DATA_URL_LENGTH) {
-        const valid = sanitizeChatImageUrl(candidate);
-        if (valid) return valid;
-      }
-    }
-
-    throw new Error('Image could not be compressed small enough for P2P chat.');
-  } finally {
-    if (loadedUrl.revoke && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
-      URL.revokeObjectURL(loadedUrl.url);
-    }
-  }
-}
-
-async function stageChatImageFile(file) {
-  if (!file) return false;
-  try {
-    setChatStatusNote('Compressing image...');
-    const dataUrl = await prepareChatImageDataUrl(file);
-    stagedChatImage = {
-      dataUrl,
-      name: file.name || 'image'
-    };
-    renderChatUI();
-    if (dom.chatTextInput && typeof dom.chatTextInput.focus === 'function') {
-      dom.chatTextInput.focus();
-    }
-    return true;
-  } catch (err) {
-    setChatStatusNote(err && err.message ? err.message : 'Could not attach image.');
-    return false;
-  }
-}
-
 function sendChatMessage(rawText) {
   if (net.mode !== 'online' || opponentDisconnected || !isLogicalConnOpen(net.conn)) {
     setChatStatusNote('Chat is available while connected to an online opponent.');
     return false;
   }
   const text = sanitizeChatText(rawText);
-  const imageDataUrl = stagedChatImage ? sanitizeChatImageUrl(stagedChatImage.dataUrl) : null;
-  if (!text && !imageDataUrl) return false;
+  if (!text) return false;
 
   const id = `c_${net.localClientId}_${Date.now()}_${++net.txSeq}`;
   const ts = Date.now();
@@ -9020,7 +9190,6 @@ function sendChatMessage(rawText) {
     senderName: net.myName || 'Guest',
     text
   };
-  if (imageDataUrl) payload.imageDataUrl = imageDataUrl;
 
   appendChatMessage(
     {
@@ -9028,12 +9197,11 @@ function sendChatMessage(rawText) {
       ts,
       mine: true,
       senderName: net.myName || 'You',
-      text,
-      imageDataUrl
+      text
     },
     false
   );
-  clearStagedChatImage();
+  closeChatEmojiPicker();
   if (dom.chatTextInput) dom.chatTextInput.value = '';
   sendPacket(net.conn, payload);
   return true;
@@ -9389,14 +9557,41 @@ function checkAutoJoinFromUrl() {
   }
 }
 
+function openLeaveConfirmModal() {
+  if (!dom.leaveConfirmBackdrop) return false;
+  dom.leaveConfirmBackdrop.classList.remove('hidden');
+  if (dom.leaveConfirmStayBtn && typeof dom.leaveConfirmStayBtn.focus === 'function') {
+    dom.leaveConfirmStayBtn.focus();
+  }
+  return true;
+}
+
+function closeLeaveConfirmModal() {
+  if (dom.leaveConfirmBackdrop) {
+    dom.leaveConfirmBackdrop.classList.add('hidden');
+  }
+}
+
+function confirmLeaveOnlineMatch() {
+  closeLeaveConfirmModal();
+  if (
+    net.mode === 'online' &&
+    (gameState.status === 'playing' || gameState.status === 'secret_pick')
+  ) {
+    sendPacket(net.conn, { type: 'resign' });
+  }
+  return goHome(true);
+}
+
 function goHome(force = false) {
   if (!force && net.mode === 'online' && (gameState.status === 'playing' || gameState.status === 'secret_pick')) {
-    if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      const confirmLeave = window.confirm('Leave the active game and return to the main board?');
-      if (!confirmLeave) return false;
+    if (dom.leaveConfirmBackdrop) {
+      openLeaveConfirmModal();
+      return false;
     }
     sendPacket(net.conn, { type: 'resign' });
   }
+  closeLeaveConfirmModal();
 
   if (net.joinTimer) {
     clearTimeout(net.joinTimer);
@@ -9420,7 +9615,7 @@ function goHome(force = false) {
   if (dom.sidebar) {
     setMobileTab('play');
   }
-  setDesktopTab('moves');
+  setDesktopTab('chat');
 
   gameState = createInitialState(setupConfig.variant || 'standard');
   viewPly = 0;
@@ -9734,11 +9929,17 @@ function initUI() {
   window.addEventListener('keydown', (e) => {
     if (
       e.key === 'Escape' &&
-      dom.chatLightbox &&
-      !dom.chatLightbox.classList.contains('hidden')
+      dom.leaveConfirmBackdrop &&
+      !dom.leaveConfirmBackdrop.classList.contains('hidden')
     ) {
       e.preventDefault();
-      closeChatLightbox();
+      closeLeaveConfirmModal();
+      return;
+    }
+
+    if (e.key === 'Escape' && chatPickerOpen) {
+      e.preventDefault();
+      closeChatEmojiPicker();
       return;
     }
 
@@ -10343,70 +10544,42 @@ function initUI() {
     dom.diceSkipBtn.addEventListener('click', () => executeDicePassTurn());
   }
 
-  // P2P Chat & Image Upload / Paste / Drag-Drop / Lightbox Listeners
+  // P2P Chat & Chess Classification Badge / Emoji Picker + Leave Confirmation Modal
+  renderChatEmojiPicker();
   if (dom.chatForm) {
     dom.chatForm.addEventListener('submit', (e) => {
       e.preventDefault();
       sendChatMessage(dom.chatTextInput ? dom.chatTextInput.value : '');
     });
   }
-  if (dom.chatAttachBtn && dom.chatImageInput) {
-    dom.chatAttachBtn.addEventListener('click', () => {
+  if (dom.chatEmojiBtn) {
+    dom.chatEmojiBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
       if (net.mode !== 'online' || opponentDisconnected) return;
-      dom.chatImageInput.click();
+      toggleChatEmojiPicker();
     });
   }
-  if (dom.chatImageInput) {
-    dom.chatImageInput.addEventListener('change', (e) => {
-      const file = e.target?.files?.[0];
-      if (file) stageChatImageFile(file);
-    });
-  }
-  if (dom.chatRemoveImageBtn) {
-    dom.chatRemoveImageBtn.addEventListener('click', clearStagedChatImage);
-  }
-  if (dom.chatTextInput) {
-    dom.chatTextInput.addEventListener('paste', (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      for (const item of items) {
-        if (item && item.kind === 'file' && typeof item.type === 'string' && item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            stageChatImageFile(file);
-            return;
-          }
-        }
+  if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('click', (e) => {
+      if (!chatPickerOpen) return;
+      if (dom.chatEmojiPicker && dom.chatEmojiPicker.contains && dom.chatEmojiPicker.contains(e.target)) {
+        return;
       }
-    });
-  }
-  if (dom.chatSection) {
-    dom.chatSection.addEventListener('dragover', (e) => {
-      if (net.mode !== 'online' || opponentDisconnected) return;
-      e.preventDefault();
-      dom.chatSection.classList.add('drag-over');
-    });
-    dom.chatSection.addEventListener('dragleave', (e) => {
-      if (e.relatedTarget && dom.chatSection.contains(e.relatedTarget)) return;
-      dom.chatSection.classList.remove('drag-over');
-    });
-    dom.chatSection.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dom.chatSection.classList.remove('drag-over');
-      if (net.mode !== 'online' || opponentDisconnected) return;
-      const file = e.dataTransfer?.files?.[0];
-      if (file && typeof file.type === 'string' && file.type.startsWith('image/')) {
-        stageChatImageFile(file);
+      if (dom.chatEmojiBtn && dom.chatEmojiBtn.contains && dom.chatEmojiBtn.contains(e.target)) {
+        return;
       }
+      closeChatEmojiPicker();
     });
   }
-  if (dom.chatLightboxClose) {
-    dom.chatLightboxClose.addEventListener('click', closeChatLightbox);
+  if (dom.leaveConfirmStayBtn) {
+    dom.leaveConfirmStayBtn.addEventListener('click', closeLeaveConfirmModal);
   }
-  if (dom.chatLightbox) {
-    dom.chatLightbox.addEventListener('click', (e) => {
-      if (e.target === dom.chatLightbox) closeChatLightbox();
+  if (dom.leaveConfirmYesBtn) {
+    dom.leaveConfirmYesBtn.addEventListener('click', confirmLeaveOnlineMatch);
+  }
+  if (dom.leaveConfirmBackdrop) {
+    dom.leaveConfirmBackdrop.addEventListener('click', (e) => {
+      if (e.target === dom.leaveConfirmBackdrop) closeLeaveConfirmModal();
     });
   }
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -10556,12 +10729,16 @@ if (typeof module !== 'undefined' && module.exports) {
     applyDicePassTurn,
     getInviteVariantSlug,
     buildInviteUrl,
+    CHESS_CHAT_BADGES,
+    CHAT_QUICK_EMOJIS,
+    tokenizeChatText,
     sanitizeChatText,
-    sanitizeChatImageUrl,
     normalizeIncomingChatPacket,
     handleIncomingChatPacket,
     setMobileTab,
     setDesktopTab,
+    openLeaveConfirmModal,
+    closeLeaveConfirmModal,
     openBoardEditor,
     closeBoardEditor
   };

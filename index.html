@@ -7,7 +7,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>Chess — Instant Multiplayer Chess</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23739552'/%3E%3Crect x='4' y='4' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3Crect x='16' y='16' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=20261113g">
+  <link rel="stylesheet" href="style.css?v=20261113h">
 </head>
 <body>
   <!-- Inline Vector Icon Sprite (Font Awesome 6 Free Solid CC-BY-4.0 & Game-Icons CC-BY-3.0) -->
@@ -267,7 +267,7 @@
           <div class="mobile-main-actions hidden" id="mob-online-actions">
             <button type="button" class="btn btn-secondary btn-mob" id="mob-draw-btn">Draw</button>
             <button type="button" class="btn btn-secondary btn-mob" id="mob-resign-btn">Resign</button>
-            <button type="button" class="btn btn-secondary btn-mob" id="mob-leave-btn">Leave</button>
+            <button type="button" class="btn btn-leave-danger btn-mob" id="mob-leave-btn">Leave</button>
             <button type="button" class="btn btn-primary btn-mob" id="mob-rematch-btn" disabled>Rematch</button>
           </div>
         </div>
@@ -310,10 +310,18 @@
       <nav class="mobile-tabs" id="mobile-tabs" aria-label="Mobile sections">
         <button type="button" class="mobile-tab-btn active" data-tab="play">Play</button>
         <button type="button" class="mobile-tab-btn" data-tab="variants">Variants</button>
-        <button type="button" class="mobile-tab-btn" data-tab="moves">Moves</button>
         <button type="button" class="mobile-tab-btn" id="mobile-chat-tab-btn" data-tab="chat">
+          <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8.4L4 21.6V18H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm2.5 5.5v2h11v-2h-11zm0 4v2h7.5v-2H6.5z"/>
+          </svg>
           <span>Chat</span>
           <span class="tab-unread-badge hidden" id="mobile-chat-badge">0</span>
+        </button>
+        <button type="button" class="mobile-tab-btn" data-tab="moves">
+          <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M4 5.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zM9.5 4.5h11v2h-11v-2zm-5.5 7a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm5.5-1h11v2h-11v-2zm-5.5 7a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm5.5-1h11v2h-11v-2z"/>
+          </svg>
+          <span>Moves</span>
         </button>
       </nav>
 
@@ -488,7 +496,7 @@
               <span class="locked-tag variant-tag" id="active-variant-tag" data-variant="standard">Standard</span>
               <span class="locked-tag" id="active-time-tag">10+5</span>
             </div>
-            <button type="button" class="btn btn-subtle btn-sm" id="leave-game-btn">Leave</button>
+            <button type="button" class="btn btn-leave-danger btn-sm" id="leave-game-btn">Leave</button>
           </div>
         </div>
 
@@ -686,17 +694,25 @@
         </div>
       </div>
 
-      <!-- Desktop Panel Switcher (Moves | P2P Chat) -->
+      <!-- Desktop Panel Switcher (P2P Chat | Moves) -->
       <div class="desktop-sidebar-tabs" id="desktop-sidebar-tabs" role="tablist" aria-label="Sidebar panel">
-        <button type="button" class="desktop-tab-btn active" id="desktop-tab-moves" data-desktop-tab="moves" role="tab" aria-selected="true">Moves</button>
-        <button type="button" class="desktop-tab-btn" id="desktop-tab-chat" data-desktop-tab="chat" role="tab" aria-selected="false">
+        <button type="button" class="desktop-tab-btn active" id="desktop-tab-chat" data-desktop-tab="chat" role="tab" aria-selected="true">
+          <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H8.4L4 21.6V18H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zm2.5 5.5v2h11v-2h-11zm0 4v2h7.5v-2H6.5z"/>
+          </svg>
           <span>Chat</span>
           <span class="tab-unread-badge hidden" id="desktop-chat-badge">0</span>
+        </button>
+        <button type="button" class="desktop-tab-btn" id="desktop-tab-moves" data-desktop-tab="moves" role="tab" aria-selected="false">
+          <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M4 5.5a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zM9.5 4.5h11v2h-11v-2zm-5.5 7a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm5.5-1h11v2h-11v-2zm-5.5 7a1.5 1.5 0 1 1 3 0 1.5 1.5 0 0 1-3 0zm5.5-1h11v2h-11v-2z"/>
+          </svg>
+          <span>Moves</span>
         </button>
       </div>
 
       <!-- Algebraic Move History + Replay Navigation -->
-      <div class="moves-section" id="moves-section">
+      <div class="moves-section hidden" id="moves-section">
         <div class="moves-header">
           <span>Moves</span>
           <button type="button" class="pgn-btn" id="copy-pgn-btn" title="Copy moves as PGN">Copy PGN</button>
@@ -710,29 +726,25 @@
         </div>
       </div>
 
-      <!-- Peer-to-Peer Encrypted Match Chat (Text + Compressed Images) -->
-      <section class="chat-section hidden" id="chat-section" aria-label="Peer-to-peer chat">
+      <!-- Peer-to-Peer Encrypted Match Chat (Emojis & Chess Classification Badges) -->
+      <section class="chat-section" id="chat-section" aria-label="Peer-to-peer chat">
         <div class="chat-header">
           <span>Match Chat</span>
           <span class="chat-status-pill" id="chat-status-pill">Offline</span>
         </div>
         <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
-        <div class="chat-staged-preview hidden" id="chat-staged-preview">
-          <img class="chat-staged-img" id="chat-staged-img" alt="Attached image preview">
-          <span class="chat-staged-name" id="chat-staged-name">Image ready</span>
-          <button type="button" class="chat-remove-image-btn" id="chat-remove-image-btn" aria-label="Remove attached image">&times;</button>
-        </div>
-        <div class="chat-status-note" id="chat-status-note">Connect to an online friend to chat or share images.</div>
+        <div class="chat-emoji-picker hidden" id="chat-emoji-picker" aria-label="Chess reactions and emojis"></div>
+        <div class="chat-status-note" id="chat-status-note">Connect to an online friend to chat.</div>
         <form class="chat-form" id="chat-form" autocomplete="off">
-          <input type="file" id="chat-image-input" accept="image/*" class="hidden">
-          <button type="button" class="chat-attach-btn" id="chat-attach-btn" title="Attach image (or paste / drop)" aria-label="Attach image">
-            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <circle cx="8.5" cy="8.5" r="1.5"></circle>
-              <polyline points="21 15 16 10 5 21"></polyline>
+          <button type="button" class="chat-emoji-btn" id="chat-emoji-btn" title="Emojis &amp; Chess badges" aria-label="Open emojis and chess badges" aria-expanded="false">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.9"/>
+              <circle cx="9" cy="10" r="1.3" fill="currentColor"/>
+              <circle cx="15" cy="10" r="1.3" fill="currentColor"/>
+              <path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" d="M8.5 14.2a4.4 4.4 0 0 0 7 0"/>
             </svg>
           </button>
-          <input type="text" class="chat-text-input" id="chat-text-input" maxlength="500" placeholder="Message or paste image..." aria-label="Chat message" autocomplete="off">
+          <input type="text" class="chat-text-input" id="chat-text-input" maxlength="500" placeholder="Message or pick a reaction..." aria-label="Chat message" autocomplete="off">
           <button type="submit" class="btn btn-primary btn-sm chat-send-btn" id="chat-send-btn">Send</button>
         </form>
       </section>
@@ -786,10 +798,19 @@
     </aside>
   </main>
 
-  <!-- Chat Image Lightbox Modal -->
-  <div class="chat-lightbox hidden" id="chat-lightbox" role="dialog" aria-modal="true" aria-label="Full size chat image">
-    <button type="button" class="chat-lightbox-close" id="chat-lightbox-close" aria-label="Close image viewer">&times;</button>
-    <img class="chat-lightbox-img" id="chat-lightbox-img" alt="Shared chat image">
+  <!-- Leave Match Confirmation Modal -->
+  <div class="confirm-backdrop hidden" id="leave-confirm-backdrop" role="dialog" aria-modal="true" aria-labelledby="leave-confirm-title">
+    <div class="confirm-modal" id="leave-confirm-modal">
+      <div class="confirm-modal-head">
+        <span class="confirm-modal-icon" aria-hidden="true">!</span>
+        <h2 class="confirm-modal-title" id="leave-confirm-title">Leave active match?</h2>
+      </div>
+      <p class="confirm-modal-body">Leaving now will resign the current online game and return you to the main board.</p>
+      <div class="confirm-modal-actions">
+        <button type="button" class="btn btn-secondary" id="leave-confirm-stay-btn">Stay</button>
+        <button type="button" class="btn btn-leave-danger" id="leave-confirm-yes-btn">Leave Game</button>
+      </div>
+    </div>
   </div>
 
   <!-- Variant Rule Info Floating Tooltip (outside sidebar so never clipped) -->
@@ -803,6 +824,6 @@
     src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"
     onerror="var s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';document.head.appendChild(s);"
   ></script>
-  <script src="game.js?v=20261113g"></script>
+  <script src="game.js?v=20261113h"></script>
 </body>
 </html>
