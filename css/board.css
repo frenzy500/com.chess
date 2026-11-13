@@ -1,0 +1,940 @@
+/* Chessboard, Coordinates, Pieces, Pockets, Clocks, Arrows, Secret Queen & Dice Tray */
+
+/* Board Column */
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: var(--board-size);
+  flex-shrink: 0;
+}
+
+.board-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: var(--board-size);
+}
+
+.player-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 40px;
+  padding: 2px 0;
+}
+
+.player-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.player-identity {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.color-swatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 3px;
+  border: 1px solid #57544f;
+  flex-shrink: 0;
+}
+
+.color-swatch.white {
+  background: #f5f5f0;
+}
+
+.color-swatch.black {
+  background: #1b1a18;
+}
+
+.player-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.player-elo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.player-elo.negative {
+  color: #e67e73;
+}
+
+.turn-pill {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--accent-green);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.captured-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 16px;
+  padding-left: 22px;
+}
+
+.captured-row:empty {
+  display: none;
+}
+
+.captured-pieces {
+  display: flex;
+  align-items: center;
+}
+
+.captured-icon {
+  width: 16px;
+  height: 16px;
+  margin-left: -4px;
+  pointer-events: none;
+}
+
+.captured-icon:first-child {
+  margin-left: 0;
+}
+
+.material-diff {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+
+.player-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Crazyhouse Pocket Bank */
+.pocket-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+  background: var(--bg-panel-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  overscroll-behavior: contain;
+}
+
+.pocket-slot {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  padding: 2px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  touch-action: none;
+}
+
+.pocket-slot img {
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.pocket-slot.empty {
+  opacity: 0.24;
+}
+
+.pocket-slot.usable {
+  cursor: grab;
+  border-color: #4f4c47;
+}
+
+.pocket-slot.usable:hover {
+  background: #383632;
+  border-color: #6b6861;
+}
+
+.pocket-slot.selected {
+  background: var(--sq-dark-hl);
+  border-color: var(--sq-light-hl);
+}
+
+.pocket-slot.premove-selected {
+  background: var(--sq-premove-dark);
+  border-color: var(--sq-premove-light);
+}
+
+.pocket-count {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: #1a1917;
+  border: 1px solid #63605a;
+  color: #f0efe9;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* Digital Chess Clocks (Chess.com Dark/Light Active Contrast) */
+.clock-box {
+  min-width: 88px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: #22211e;
+  border: 1px solid var(--border-subtle);
+  color: #8f8d88;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.clock-box.active {
+  background: #f0f0ec;
+  border-color: #f0f0ec;
+  color: #1c1b19;
+}
+
+.clock-box.low-time {
+  background: #b8332e;
+  border-color: #d0443e;
+  color: #ffffff;
+}
+
+/* Chessboard */
+.board-shell {
+  position: relative;
+  width: var(--board-size);
+  height: var(--board-size);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--sq-dark);
+  overscroll-behavior: contain;
+}
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  overscroll-behavior: contain;
+}
+
+.square {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.square.light {
+  background: var(--sq-light);
+}
+
+.square.dark {
+  background: var(--sq-dark);
+}
+
+.square.light.highlight {
+  background: var(--sq-light-hl);
+}
+
+.square.dark.highlight {
+  background: var(--sq-dark-hl);
+}
+
+.square.light.rc-mark {
+  background: var(--sq-rc-light);
+}
+
+.square.dark.rc-mark {
+  background: var(--sq-rc-dark);
+}
+
+.square.light.premove {
+  background: var(--sq-premove-light);
+}
+
+.square.dark.premove {
+  background: var(--sq-premove-dark);
+}
+
+/* Fog of War Shrouded Squares */
+.square.light.fog {
+  background: #42403d;
+}
+
+.square.dark.fog {
+  background: #33312e;
+}
+
+.square.light.fog.rc-mark {
+  background: #9f5548;
+}
+
+.square.dark.fog.rc-mark {
+  background: #874337;
+}
+
+.square.light.fog.premove {
+  background: #a4514b;
+}
+
+.square.dark.fog.premove {
+  background: #8d403b;
+}
+
+.square.fog .coord {
+  color: #7c7974;
+}
+
+.square.in-check {
+  background: var(--sq-check) !important;
+}
+
+.square.drag-target {
+  outline: 3.5px solid rgba(255, 255, 255, 0.85);
+  outline-offset: -3.5px;
+}
+
+.square.movable {
+  cursor: grab;
+}
+
+.square.legal-dest {
+  cursor: pointer;
+}
+
+/* Right-Click Tactical Arrow SVG Layer */
+.board-arrows {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 12;
+}
+
+/* Board Edge Coordinates (1-8, a-h) */
+.coord {
+  position: absolute;
+  font-size: clamp(9px, 1.4vh, 12px);
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.coord-rank {
+  top: 3px;
+  left: 4px;
+}
+
+.coord-file {
+  bottom: 3px;
+  right: 4px;
+}
+
+.square.light .coord {
+  color: var(--sq-dark);
+}
+
+.square.dark .coord {
+  color: var(--sq-light);
+}
+
+/* Vector Chess Pieces */
+.piece {
+  width: 88%;
+  height: 88%;
+  pointer-events: none;
+  -webkit-user-drag: none;
+  will-change: transform;
+  z-index: 5;
+}
+
+.piece.dragging-source {
+  opacity: 0;
+}
+
+.drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 72px;
+  height: 72px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* On touchscreens, lift dragged piece slightly above fingertip so thumb never hides it */
+.drag-ghost.touch-drag {
+  transform: translate(-50%, -82%) scale(1.15);
+}
+
+/* Legal Move & Premove Target Dots / Rings */
+.legal-dot {
+  position: absolute;
+  width: 32%;
+  height: 32%;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.legal-ring {
+  position: absolute;
+  width: 88%;
+  height: 88%;
+  border-radius: 50%;
+  border: 6px solid rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  z-index: 6;
+}
+
+.premove-dot {
+  background: rgba(185, 45, 38, 0.38);
+}
+
+.premove-ring {
+  border-color: rgba(185, 45, 38, 0.44);
+}
+
+/* Promotion Chooser */
+.promotion-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  z-index: 25;
+}
+
+.promotion-menu {
+  position: absolute;
+  width: max(12.5%, 54px);
+  background: #ffffff;
+  border-radius: 5px;
+  border: 2px solid #262522;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.promotion-option {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 0;
+  border-bottom: 1px solid #e4e3de;
+  background: #f8f8f5;
+  padding: 6%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.promotion-option:last-child {
+  border-bottom: 0;
+}
+
+.promotion-option:hover,
+.promotion-option:active {
+  background: var(--sq-light-hl);
+}
+
+.promotion-option img {
+  width: 90%;
+  height: 90%;
+  pointer-events: none;
+}
+
+/* --- Secret Queen Chess: board marker, pick phase & reveal flash --- */
+.secret-badge {
+  position: absolute;
+  top: 3%;
+  right: 3%;
+  width: 34%;
+  height: 34%;
+  border-radius: 50%;
+  background: #1f3833;
+  border: 1px solid #5bb59e;
+  padding: 2%;
+  box-sizing: border-box;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.square.secret-pickable {
+  cursor: pointer;
+  box-shadow: inset 0 0 0 2px rgba(111, 207, 182, 0.45);
+}
+
+.square.secret-pick-selected {
+  box-shadow: inset 0 0 0 3px #6fcfb6;
+}
+
+.square.secret-revealed {
+  box-shadow: inset 0 0 0 3px #6fcfb6;
+}
+
+.secret-pick-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: var(--board-size);
+  margin: 6px auto 0;
+  padding: 7px 9px;
+  background: var(--var-secret-bg);
+  border: 1px solid var(--var-secret-border);
+  border-radius: 6px;
+  color: #d8efe8;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-sizing: border-box;
+}
+
+.secret-pick-text {
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.secret-pick-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.secret-pick-actions .btn {
+  padding: 6px 11px;
+  font-size: 12px;
+}
+
+/* --- Dice Chess: Side Felt Tray, Tactile Vector Dice, Auto-Roll & Movable Indicators --- */
+.dice-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: var(--board-size);
+  margin: 0 auto;
+  padding: 8px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  box-sizing: border-box;
+}
+
+.dice-bar.doubles-active {
+  background: #2b2418;
+  border-color: #8f6d31;
+}
+
+.dice-bar.no-moves-active {
+  background: #31201e;
+  border-color: #6b3832;
+}
+
+.dice-tray-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dice-tray-title {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.dice-autoroll-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  position: relative;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.dice-autoroll-input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.dice-autoroll-track {
+  position: relative;
+  width: 30px;
+  height: 16px;
+  border-radius: 999px;
+  background: #171614;
+  border: 1px solid #4c4943;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
+  flex-shrink: 0;
+}
+
+.dice-autoroll-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #a9a59c;
+  transition: transform 0.14s ease, background-color 0.14s ease;
+}
+
+.dice-autoroll-input:checked + .dice-autoroll-track {
+  background: #3c5922;
+  border-color: var(--accent-green);
+}
+
+.dice-autoroll-input:checked + .dice-autoroll-track::after {
+  transform: translateX(14px);
+  background: #ffffff;
+}
+
+.dice-autoroll-input:focus-visible + .dice-autoroll-track {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 1px;
+}
+
+.dice-autoroll-input:checked ~ .dice-autoroll-text {
+  color: #cbe7ab;
+}
+
+/* Recessed Tabletop Felt Well Holding Both Dice */
+.dice-felt-well {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 8px;
+  background: #1a1916;
+  border: 1px solid #35332f;
+  border-radius: 6px;
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.42);
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.dice-felt-well.can-roll {
+  border-color: #6a8f43;
+  background: #1d2119;
+  cursor: pointer;
+}
+
+.dice-felt-well.can-roll:hover {
+  border-color: var(--accent-green);
+  background: #21271c;
+}
+
+.dice-felt-well.rolling {
+  animation: feltTrayPulse 360ms ease-out;
+}
+
+.dice-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.die-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px 5px 6px;
+  background: #242320;
+  border: 1px solid #4a4741;
+  border-radius: 6px;
+  color: var(--text-main);
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease, opacity 0.12s ease;
+}
+
+.die-card:hover:not(.die-disabled):not(.blocked) {
+  background: #2d2b27;
+  border-color: #7b776f;
+}
+
+.die-card.die-unrolled {
+  background: #242620;
+  border-color: #5b783c;
+}
+
+.dice-felt-well:not(.can-roll) .die-card.die-unrolled {
+  background: #22211e;
+  border-color: #3f3d38;
+  opacity: 0.72;
+  cursor: default;
+}
+
+.die-card.selected,
+.die-card.die-selected {
+  background: #2b3423;
+  border-color: var(--accent-green);
+}
+
+.die-card.doubles,
+.die-card.die-doubles {
+  background: #332919;
+  border-color: #c9973e;
+}
+
+.die-card.blocked,
+.die-card.die-disabled {
+  opacity: 0.5;
+  cursor: default;
+  border-color: var(--border-subtle);
+}
+
+.die-face-svg {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: block;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.38));
+  transform-origin: center center;
+}
+
+.die-piece-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.die-piece-img {
+  width: 23px;
+  height: 23px;
+  flex-shrink: 0;
+  pointer-events: none;
+  -webkit-user-drag: none;
+}
+
+.die-piece-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+}
+
+.die-card.die-unrolled .die-piece-meta {
+  display: none;
+}
+
+.dice-roll-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+
+.dice-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dice-badges {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.dice-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.dice-badge-doubles {
+  background: #42331c;
+  border: 1px solid #8c6a32;
+  color: #f3c46b;
+}
+
+.dice-badge-castle {
+  background: #23333e;
+  border: 1px solid #3f6278;
+  color: #96c9e8;
+}
+
+.dice-badge-skip {
+  background: #472421;
+  border: 1px solid #7d3c36;
+  color: #f59c92;
+}
+
+.dice-prompt-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.dice-bar.doubles-active .dice-prompt-text {
+  color: #efd093;
+}
+
+.dice-bar.no-moves-active .dice-prompt-text {
+  color: #f2aca3;
+}
+
+@keyframes feltTrayPulse {
+  0% {
+    background: #27251f;
+  }
+  100% {
+    background: #1a1916;
+  }
+}
+
+@keyframes diceThrowLeft {
+  0% {
+    transform: translate(-7px, -9px) rotate(-185deg) scale(0.7);
+  }
+  32% {
+    transform: translate(3px, 3px) rotate(24deg) scale(1.09);
+  }
+  58% {
+    transform: translate(-2px, -2px) rotate(-11deg) scale(0.96);
+  }
+  80% {
+    transform: translate(1px, 1px) rotate(4deg) scale(1.02);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes diceThrowRight {
+  0% {
+    transform: translate(7px, -11px) rotate(205deg) scale(0.68);
+  }
+  34% {
+    transform: translate(-3px, 4px) rotate(-26deg) scale(1.1);
+  }
+  62% {
+    transform: translate(2px, -2px) rotate(10deg) scale(0.96);
+  }
+  84% {
+    transform: translate(-1px, 1px) rotate(-4deg) scale(1.02);
+  }
+  100% {
+    transform: translate(0, 0) rotate(0deg) scale(1);
+  }
+}
+
+#die-card-1.rolling .die-face-svg {
+  animation: diceThrowLeft 410ms cubic-bezier(0.22, 0.86, 0.32, 1);
+}
+
+#die-card-2.rolling .die-face-svg {
+  animation: diceThrowRight 455ms cubic-bezier(0.22, 0.86, 0.32, 1) 25ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dice-felt-well.rolling,
+  #die-card-1.rolling .die-face-svg,
+  #die-card-2.rolling .die-face-svg {
+    animation: none;
+  }
+}
+
+/* Subtle Whole-Square Movable Piece Highlighting (No Harsh Glare or Corner Dots) */
+.square.dice-eligible::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(139, 98, 214, 0.19);
+  box-shadow: inset 0 0 0 2px rgba(154, 114, 226, 0.42);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.square.dice-eligible.dark::before {
+  background: rgba(154, 114, 226, 0.23);
+}
+
+.square.dice-eligible-wild::before {
+  background: rgba(212, 152, 42, 0.20);
+  box-shadow: inset 0 0 0 2px rgba(224, 166, 56, 0.46);
+}
+
+.square.dice-eligible-wild.dark::before {
+  background: rgba(224, 166, 56, 0.24);
+}
+
+.square.dice-eligible.highlight::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px rgba(136, 92, 206, 0.44);
+}
+
+.square.dice-eligible-wild.highlight::before {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px rgba(204, 144, 34, 0.48);
+}
+
+.square.dice-eligible .piece {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.24));
+}

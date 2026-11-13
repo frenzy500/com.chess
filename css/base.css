@@ -1,0 +1,328 @@
+/* Theme Variables, Global Reset, Base Layout, Shared Buttons & Confirmation Modals */
+
+/* ============================================================================
+ * Classic Dark Chess Theme (Flat, High-Contrast, Zero Clutter, Mobile-First Ready)
+ * ============================================================================ */
+
+:root {
+  --bg-page: #302e2b;
+  --bg-panel: #262522;
+  --bg-panel-inset: #1f1e1b;
+  --bg-panel-alt: #2c2b28;
+  --border-subtle: #3b3936;
+
+  --text-main: #eae9e6;
+  --text-muted: #9e9c98;
+  --text-dim: #7c7a76;
+
+  /* Default Board Theme: Classic Green */
+  --sq-light: #ebecd0;
+  --sq-dark: #739552;
+  --sq-light-hl: #f5f682;
+  --sq-dark-hl: #b9ca43;
+
+  --sq-premove-light: #ea786f;
+  --sq-premove-dark: #d45850;
+  --sq-rc-light: #eb7d6a;
+  --sq-rc-dark: #c95240;
+  --sq-check: #e0483e;
+
+  --accent-green: #81b64c;
+  --accent-green-hover: #8ec356;
+  --accent-green-lip: #5d8b31;
+
+  --btn-neutral: #3c3a37;
+  --btn-neutral-hover: #484642;
+  --danger-bg: #b33939;
+  --danger-hover: #c44545;
+
+  /* Flat Matte Variant Accent Palette (Classic Boardgame Tones — No Neon) */
+  --var-standard-bg: #2e3d21;
+  --var-standard-border: #4f6c35;
+  --var-standard-fg: #a4d669;
+
+  --var-cannibal-bg: #432522;
+  --var-cannibal-border: #6f3b36;
+  --var-cannibal-fg: #ef8376;
+
+  --var-crazyhouse-bg: #42331c;
+  --var-crazyhouse-border: #6e542c;
+  --var-crazyhouse-fg: #efb85b;
+
+  --var-fog-bg: #23333e;
+  --var-fog-border: #3b586c;
+  --var-fog-fg: #84badc;
+
+  --var-secret-bg: #1f3833;
+  --var-secret-border: #355f56;
+  --var-secret-fg: #6fcfb6;
+
+  --var-dice-bg: #32243b;
+  --var-dice-border: #583e68;
+  --var-dice-fg: #c89ef2;
+
+  --board-size: min(75vh, calc(100vw - 410px), 660px);
+}
+
+body[data-theme="brown"] {
+  --sq-light: #f0d9b5;
+  --sq-dark: #b58863;
+  --sq-light-hl: #f7ec74;
+  --sq-dark-hl: #dac34b;
+}
+
+body[data-theme="slate"] {
+  --sq-light: #dee3e6;
+  --sq-dark: #7896a8;
+  --sq-light-hl: #dce37b;
+  --sq-dark-hl: #9db858;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg-page);
+  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+input,
+.code-display {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.svg-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Desktop-hidden Mobile Shells */
+.mobile-topbar,
+.mobile-action-dock,
+.mobile-tabs,
+.mobile-variants-section {
+  display: none;
+}
+
+/* Main Two-Column Layout */
+.layout {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 18px 24px;
+}
+
+.controls-row {
+  display: flex;
+  gap: 7px;
+}
+
+.controls-row .btn {
+  flex: 1;
+}
+
+button,
+.btn {
+  touch-action: manipulation;
+}
+
+.btn {
+  appearance: none;
+  border: 0;
+  border-radius: 5px;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+  color: var(--text-main);
+  text-align: center;
+}
+
+.btn-compact {
+  padding: 9px 6px;
+  font-size: 12px;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-block {
+  display: block;
+  width: 100%;
+}
+
+.btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.btn-primary {
+  background: var(--accent-green);
+  border-bottom: 2px solid var(--accent-green-lip);
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-green-hover);
+}
+
+.btn-secondary {
+  background: var(--btn-neutral);
+  color: var(--text-main);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--btn-neutral-hover);
+}
+
+.btn-subtle {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  margin-top: 7px;
+}
+
+.btn-subtle:hover:not(:disabled) {
+  background: var(--btn-neutral);
+  color: var(--text-main);
+}
+
+.connected-row .btn-subtle {
+  margin-top: 0;
+}
+
+.btn-danger {
+  background: var(--danger-bg) !important;
+  color: #ffffff !important;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-hover) !important;
+}
+
+.btn-leave-danger {
+  background: #b93833;
+  border: 1px solid #8c2420;
+  color: #ffffff;
+}
+
+.btn-leave-danger:hover:not(:disabled) {
+  background: #d2413b;
+  border-color: #a42c27;
+  color: #ffffff;
+}
+
+.connected-row .btn-leave-danger {
+  margin-top: 0;
+}
+
+/* Centered Confirmation Modal */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 960;
+  background: rgba(12, 11, 10, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.confirm-modal {
+  width: min(100%, 360px);
+  background: var(--bg-panel);
+  border: 1px solid #49453f;
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 22px 54px rgba(0, 0, 0, 0.68);
+  animation: confirmPop 0.14s ease-out;
+}
+
+@keyframes confirmPop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.confirm-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.confirm-modal-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(185, 56, 51, 0.22);
+  border: 1px solid #b93833;
+  color: #f38b87;
+  font-size: 14px;
+  font-weight: 900;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.confirm-modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.confirm-modal-body {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.48;
+  color: var(--text-muted);
+}
+
+.confirm-modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-modal-actions .btn {
+  min-width: 96px;
+}
+
+.hidden {
+  display: none !important;
+}

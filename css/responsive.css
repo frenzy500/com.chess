@@ -1,0 +1,683 @@
+/* Desktop Dice Side-Tray Breakpoint (>= 1120px) & Mobile/Tablet Responsive Layout (<= 900px) */
+
+/* Desktop Side Dice Tray Beside the Board */
+@media (min-width: 1120px) {
+  body.dice-mode {
+    --board-size: min(75vh, calc(100vw - 600px), 640px);
+  }
+
+  body.dice-mode .board-column {
+    width: auto;
+    min-width: var(--board-size);
+  }
+
+  body.dice-mode .player-bar,
+  body.dice-mode .secret-pick-bar {
+    width: var(--board-size);
+    margin-left: auto;
+    margin-right: 0;
+  }
+
+  body.dice-mode .board-stage {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    width: auto;
+  }
+
+  body.dice-mode .dice-bar {
+    order: -1;
+    width: 174px;
+    margin: 0;
+    padding: 10px;
+    gap: 9px;
+    flex-shrink: 0;
+  }
+
+  body.dice-mode .dice-felt-well {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  body.dice-mode .dice-pair {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
+  }
+
+  body.dice-mode .die-card {
+    width: 100%;
+    justify-content: flex-start;
+    padding: 5px 8px;
+  }
+
+  body.dice-mode .die-card.die-unrolled {
+    justify-content: center;
+    padding: 7px;
+  }
+
+  body.dice-mode .dice-roll-btn {
+    width: 100%;
+    padding: 8px 10px;
+  }
+
+  body.dice-mode .dice-info {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  body.dice-mode #dice-skip-btn {
+    width: 100%;
+  }
+}
+
+/* ============================================================================
+ * Super Phone-Friendly Responsive Layout (Phones & Tablets <= 900px)
+ * ============================================================================ */
+
+@media (max-width: 900px) {
+  :root {
+    --board-size: min(calc(100vw - 12px), 520px);
+  }
+
+  .layout {
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 6px 6px calc(22px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Compact Mobile Top Header Bar */
+  .mobile-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: var(--board-size);
+    padding: 7px 10px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    gap: 8px;
+  }
+
+  .mobile-brand-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mobile-variant-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 9px;
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    border: 1px solid var(--var-standard-border);
+    background: var(--var-standard-bg);
+    color: var(--var-standard-fg);
+    white-space: nowrap;
+  }
+
+  .mobile-variant-pill[data-variant="cannibal"] {
+    background: var(--var-cannibal-bg);
+    border-color: var(--var-cannibal-border);
+    color: var(--var-cannibal-fg);
+  }
+
+  .mobile-variant-pill[data-variant="crazyhouse"] {
+    background: var(--var-crazyhouse-bg);
+    border-color: var(--var-crazyhouse-border);
+    color: var(--var-crazyhouse-fg);
+  }
+
+  .mobile-variant-pill[data-variant="fog"] {
+    background: var(--var-fog-bg);
+    border-color: var(--var-fog-border);
+    color: var(--var-fog-fg);
+  }
+
+  .mobile-variant-pill[data-variant="secret"] {
+    background: var(--var-secret-bg);
+    border-color: var(--var-secret-border);
+    color: var(--var-secret-fg);
+  }
+
+  .mobile-variant-pill[data-variant="dice"] {
+    background: var(--var-dice-bg);
+    border-color: var(--var-dice-border);
+    color: var(--var-dice-fg);
+  }
+
+  .mobile-variant-pill .variant-glyph {
+    width: 14px;
+    height: 14px;
+  }
+
+  .mobile-topbar .icon-btn {
+    width: 32px;
+    height: 30px;
+  }
+
+  .mobile-topbar .theme-dot {
+    width: 17px;
+    height: 17px;
+  }
+
+  /* Board Column & Player Bars */
+  .board-column {
+    gap: 5px;
+  }
+
+  .player-bar {
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 36px;
+    padding: 1px 2px;
+  }
+
+  .clock-box {
+    min-width: 78px;
+    padding: 5px 10px;
+    font-size: 16px;
+  }
+
+  /* Thumb-Zone Action Dock Directly Below Board */
+  .mobile-action-dock {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 2px;
+    padding: 8px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+  }
+
+  .mobile-status-strip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 9px;
+    border-radius: 4px;
+    background: var(--bg-panel-inset);
+    font-size: 12.5px;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .mobile-status-strip.game-over {
+    background: #2f3b23;
+    color: #e6f4d7;
+  }
+
+  .mobile-status-strip.in-check {
+    background: #3d2422;
+    color: #f7c5c0;
+  }
+
+  .mobile-status-strip.viewing-past {
+    background: #353126;
+    color: #f2dfb3;
+  }
+
+  .mobile-status-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-status-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .mobile-chat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 9px;
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle);
+    background: var(--btn-neutral);
+    color: var(--text-main);
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .mobile-chat-pill.has-unread {
+    background: #2d4420;
+    border-color: var(--accent-green);
+    color: #ffffff;
+  }
+
+  .mobile-draw-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 7px 10px;
+    border-radius: 5px;
+    background: #2e3824;
+    border: 1px solid #485b35;
+    font-size: 12.5px;
+    font-weight: 700;
+    color: #e4f2d5;
+  }
+
+  .mobile-quick-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .mobile-step-group {
+    display: flex;
+    gap: 5px;
+    flex-shrink: 0;
+  }
+
+  .mob-tool-btn {
+    width: 40px;
+    height: 40px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 5px;
+    background: var(--bg-panel-inset);
+    color: var(--text-main);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 15px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .mob-tool-btn:active:not(:disabled) {
+    background: var(--btn-neutral-hover);
+  }
+
+  .mob-tool-btn:disabled {
+    opacity: 0.34;
+    cursor: not-allowed;
+  }
+
+  .mobile-main-actions {
+    display: flex;
+    flex: 1;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .mobile-main-actions .btn-mob {
+    flex: 1;
+    height: 40px;
+    padding: 0 8px;
+    font-size: 12.5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+  }
+
+  /* Segmented Tabbed Sidebar Card on Mobile */
+  .sidebar {
+    width: var(--board-size);
+    height: auto;
+    min-height: 0;
+    max-height: none;
+  }
+
+  /* Hide duplicate desktop header/status/footer/tabs inside sidebar on mobile */
+  .sidebar-header,
+  .sidebar > .status-banner,
+  .sidebar > .premove-cancel-bar,
+  .sidebar > .draw-offer-banner,
+  .desktop-sidebar-tabs,
+  .controls-footer {
+    display: none !important;
+  }
+
+  .mobile-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 6px;
+    background: var(--bg-panel-inset);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .mobile-tab-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 36px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    padding: 0 4px;
+  }
+
+  .mobile-tab-btn.active {
+    background: var(--btn-neutral);
+    border-color: #54514b;
+    color: #ffffff;
+  }
+
+  /* Tab Visibility Rules */
+  .sidebar[data-mobile-tab="play"] .mobile-variants-section,
+  .sidebar[data-mobile-tab="play"] .moves-section,
+  .sidebar[data-mobile-tab="play"] .chat-section {
+    display: none !important;
+  }
+
+  .sidebar[data-mobile-tab="variants"] .game-box,
+  .sidebar[data-mobile-tab="variants"] .moves-section,
+  .sidebar[data-mobile-tab="variants"] .chat-section {
+    display: none !important;
+  }
+
+  .sidebar[data-mobile-tab="variants"] .mobile-variants-section {
+    display: block;
+  }
+
+  .sidebar[data-mobile-tab="moves"] .game-box,
+  .sidebar[data-mobile-tab="moves"] .mobile-variants-section,
+  .sidebar[data-mobile-tab="moves"] .chat-section {
+    display: none !important;
+  }
+
+  .sidebar[data-mobile-tab="moves"] .moves-section {
+    display: flex !important;
+  }
+
+  .sidebar[data-mobile-tab="chat"] .game-box,
+  .sidebar[data-mobile-tab="chat"] .mobile-variants-section,
+  .sidebar[data-mobile-tab="chat"] .moves-section {
+    display: none !important;
+  }
+
+  .sidebar[data-mobile-tab="chat"] .chat-section {
+    display: flex !important;
+  }
+
+  .chat-messages {
+    height: 260px;
+    max-height: 46vh;
+  }
+
+  .chat-text-input {
+    font-size: 16px;
+    height: 42px;
+  }
+
+  .chat-emoji-btn,
+  .chat-send-btn {
+    height: 42px;
+  }
+
+  .chat-emoji-btn {
+    width: 42px;
+  }
+
+  .chat-emoji-grid {
+    grid-template-columns: repeat(8, 1fr);
+  }
+
+  .chat-emoji-item {
+    height: 36px;
+    font-size: 18px;
+  }
+
+  .confirm-modal-actions .btn {
+    flex: 1;
+    height: 42px;
+  }
+
+  /* Mobile Variants Panel */
+  .mobile-variants-section {
+    padding: 12px;
+    background: var(--bg-panel-alt);
+  }
+
+  .mobile-variants-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 9px;
+  }
+
+  .mobile-variants-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+
+  .variant-grid-large {
+    gap: 8px;
+    margin-bottom: 4px;
+  }
+
+  .variant-grid-large .variant-btn {
+    padding: 9px 9px;
+  }
+
+  .variant-grid-large .variant-icon-badge {
+    width: 36px;
+    height: 36px;
+  }
+
+  .variant-grid-large .variant-glyph {
+    width: 19px;
+    height: 19px;
+  }
+
+  .variant-grid-large .variant-card-title {
+    font-size: 13px;
+  }
+
+  .variant-grid-large .variant-info-dot {
+    width: 20px;
+    height: 20px;
+    font-size: 11px;
+  }
+
+  /* Prevent iOS Safari Auto-Zoom on Inputs (>= 16px) & Enlarge Touch Controls */
+  .name-input,
+  .code-input {
+    font-size: 16px;
+  }
+
+  .code-input {
+    height: 44px;
+  }
+
+  .join-row .btn {
+    min-width: 82px;
+    height: 44px;
+    font-size: 14px;
+  }
+
+  .btn-lg-touch {
+    padding: 12px 14px;
+    font-size: 14px;
+  }
+
+  .preset-row {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .preset-chip {
+    padding: 9px 4px;
+    font-size: 12.5px;
+  }
+
+  .slider-field input[type="range"] {
+    height: 28px;
+  }
+
+  .side-btn {
+    padding: 8px 13px;
+    font-size: 13px;
+  }
+
+  /* Touch-Friendly Move History */
+  .move-list {
+    max-height: 210px;
+  }
+
+  .move-row {
+    padding: 6px 14px;
+  }
+
+  .move-san {
+    padding: 5px 8px;
+    font-size: 14px;
+  }
+
+  .replay-btn {
+    padding: 10px 0;
+    font-size: 15px;
+  }
+}
+
+/* Dedicated Full-Width Crazyhouse Pocket Row on Phones (<= 600px) */
+@media (max-width: 600px) {
+  .player-bar {
+    position: relative;
+  }
+
+  /* Keep Clock on Row 1 right side while Pocket spans cleanly across Row 2! */
+  .player-right {
+    display: contents;
+  }
+
+  .clock-box {
+    order: 2;
+    margin-left: auto;
+  }
+
+  .pocket-bar {
+    order: 3;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 5px;
+    padding: 4px;
+  }
+
+  .pocket-slot {
+    width: 100%;
+    height: 40px;
+  }
+
+  .pocket-slot img {
+    width: 31px;
+    height: 31px;
+  }
+
+  .pocket-count {
+    min-width: 16px;
+    height: 16px;
+    font-size: 11px;
+    line-height: 14px;
+  }
+
+  .mobile-topbar .theme-picker {
+    gap: 4px;
+    padding: 3px 4px;
+  }
+
+  .dice-bar {
+    gap: 6px;
+    padding: 6px 8px;
+  }
+
+  .dice-felt-well {
+    padding: 6px;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .dice-pair {
+    gap: 5px;
+    min-width: 0;
+  }
+
+  .die-card {
+    padding: 4px 6px 4px 4px;
+    gap: 5px;
+  }
+
+  .die-face-svg {
+    width: 32px;
+    height: 32px;
+  }
+
+  .die-piece-img {
+    width: 20px;
+    height: 20px;
+  }
+
+  .die-piece-label {
+    font-size: 10.5px;
+  }
+
+  .dice-roll-btn {
+    padding: 6px 10px;
+    min-height: 38px;
+    font-size: 11.5px;
+    flex-shrink: 0;
+  }
+
+  .dice-info {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .dice-badges {
+    justify-content: flex-start;
+  }
+
+  .dice-prompt-text {
+    font-size: 11.5px;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .local-variant-btn {
+    font-size: 10px;
+    padding: 5px 4px;
+  }
+}
+
+/* Landscape Phones / Short Touch Viewports: prevent vertical clipping */
+@media (max-width: 900px) and (max-height: 620px) {
+  :root {
+    --board-size: min(calc(100vw - 16px), calc(100vh - 150px));
+  }
+}
