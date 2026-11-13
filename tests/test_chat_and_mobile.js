@@ -85,7 +85,7 @@ assert(
   'Desktop Dice mode player bars align cleanly over the shifted board'
 );
 
-for (const slug of ['standard', 'cannibal', 'crazyhouse', 'fog', 'secret', 'dice']) {
+for (const slug of ['standard', 'cannibal', 'crazyhouse', 'fog', 'secret', 'dice', 'schrodinger']) {
   const html = fs.readFileSync(path.join(repoDir, 'invite', `${slug}.html`), 'utf8');
   assert(
     html.includes(`content="https://frenzy500.github.io/com.chess/assets/og/${slug}.jpg?v=20261113g"`),
@@ -391,7 +391,7 @@ function createNetworkHarness() {
       mobTabBtns.push(b);
     }
 
-    for (const v of ['standard', 'cannibal', 'crazyhouse', 'fog', 'secret', 'dice']) {
+    for (const v of ['standard', 'cannibal', 'crazyhouse', 'fog', 'secret', 'dice', 'schrodinger']) {
       const b1 = makeFakeEl('button');
       b1.className = 'variant-btn';
       b1.dataset.variant = v;

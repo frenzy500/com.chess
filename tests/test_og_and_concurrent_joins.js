@@ -52,6 +52,7 @@ const variants = [
   { slug: 'fog', nameMatch: 'Fog of War' },
   { slug: 'secret', nameMatch: 'Secret Queen' },
   { slug: 'dice', nameMatch: 'Dice Chess' },
+  { slug: 'schrodinger', nameMatch: "Schrödinger's Chess" },
 ];
 
 for (const v of variants) {

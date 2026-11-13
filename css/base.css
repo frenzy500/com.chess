@@ -61,6 +61,10 @@
   --var-dice-border: #583e68;
   --var-dice-fg: #c89ef2;
 
+  --var-schrodinger-bg: #1c363b;
+  --var-schrodinger-border: #2f6c78;
+  --var-schrodinger-fg: #5de0e6;
+
   --board-size: min(75vh, calc(100vw - 410px), 660px);
 }
 

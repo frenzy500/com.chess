@@ -81,7 +81,7 @@ function isValidCoordKey(str) {
 
 function sanitizeSAN(str) {
   if (typeof str !== 'string') return '';
-  return str.replace(/[^A-Za-z0-9+#=\-O@? ]/g, '').slice(0, 12);
+  return str.replace(/[^A-Za-z0-9+#=\-O@?\/ ]/g, '').slice(0, 14);
 }
 
 function sanitizeLastMoveObj(lm) {
@@ -262,6 +262,7 @@ function serializeAuthoritativeState(state) {
         }
       : null,
     dice: cloneDiceState(state.dice),
+    schrodinger: cloneSchrodingerMeta(state.schrodinger),
     historyFrames: (state.historyFrames || []).map((f) => ({
       board: f.board,
       turn: f.turn,
@@ -271,6 +272,7 @@ function serializeAuthoritativeState(state) {
       pockets: f.pockets,
       secretQueens: f.secretQueens || null,
       dice: cloneDiceState(f.dice),
+      schrodinger: cloneSchrodingerMeta(f.schrodinger),
       meta: f.meta || null
     }))
   };
@@ -446,6 +448,7 @@ function validateAndHydrateState(raw) {
     'playing',
     'checkmate',
     'king_captured',
+    'no_moves',
     'stalemate',
     'draw_50',
     'draw_repetition',
@@ -503,6 +506,21 @@ function validateAndHydrateState(raw) {
     };
   };
 
+  const cleanSchrodingerObj = (s) => {
+    if (!s || typeof s !== 'object') return createInitialSchrodingerMeta();
+    const clamp = (n) => Math.max(0, Math.min(16, Math.floor(Number(n) || 0)));
+    const side = (obj) => ({
+      promoL: clamp(obj?.promoL),
+      promoD: clamp(obj?.promoD),
+      capL: clamp(obj?.capL),
+      capD: clamp(obj?.capD)
+    });
+    return {
+      w: side(s.w),
+      b: side(s.b)
+    };
+  };
+
   const isFogMasked = Boolean(raw.fogMasked && cleanVariant === 'fog' && raw.status === 'playing');
   const cleanFogVisible =
     isFogMasked && Array.isArray(raw.fogVisible)
@@ -530,6 +548,7 @@ function validateAndHydrateState(raw) {
           b: cleanPocketSide(f.pockets?.b)
         },
         dice: cleanVariant === 'dice' ? cleanDiceObj(f.dice) : null,
+        schrodinger: cleanVariant === 'schrodinger' ? cleanSchrodingerObj(f.schrodinger) : null,
         fogVisible:
           isFogMasked && Array.isArray(f.fogVisible)
             ? f.fogVisible.slice(0, 64).filter(isValidCoordKey)
@@ -615,7 +634,8 @@ function validateAndHydrateState(raw) {
     fogVisible: cleanFogVisible,
     fogLegalMoves: cleanFogMoves,
     secretQueens: cleanSecretQueens,
-    dice: cleanVariant === 'dice' ? cleanDiceObj(raw.dice) : null
+    dice: cleanVariant === 'dice' ? cleanDiceObj(raw.dice) : null,
+    schrodinger: cleanVariant === 'schrodinger' ? cleanSchrodingerObj(raw.schrodinger) : null
   };
 
   if (hydrated.historyFrames.length === 0) {

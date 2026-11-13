@@ -463,10 +463,13 @@ function closeBoardEditor() {
 function syncEditorCastlingValidity() {
   if (!dom.editorCastlingWk) return;
   const board = editorState.board;
-  const canWk = board[7]?.[4] === 'wk' && board[7]?.[7] === 'wr';
-  const canWq = board[7]?.[4] === 'wk' && board[7]?.[0] === 'wr';
-  const canBk = board[0]?.[4] === 'bk' && board[0]?.[7] === 'br';
-  const canBq = board[0]?.[4] === 'bk' && board[0]?.[0] === 'br';
+  const isSch = editorState.variant === 'schrodinger';
+  const isCorner = (r, c, color) =>
+    board[r]?.[c] === color + 'r' || (isSch && board[r]?.[c] === color + 'qm');
+  const canWk = board[7]?.[4] === 'wk' && isCorner(7, 7, 'w');
+  const canWq = board[7]?.[4] === 'wk' && isCorner(7, 0, 'w');
+  const canBk = board[0]?.[4] === 'bk' && isCorner(0, 7, 'b');
+  const canBq = board[0]?.[4] === 'bk' && isCorner(0, 0, 'b');
 
   if (!canWk) editorState.castling.wK = false;
   if (!canWq) editorState.castling.wQ = false;
@@ -573,6 +576,16 @@ function syncEditorPanelUI() {
     dom.editorPocketsSection.classList.toggle('hidden', editorState.variant !== 'crazyhouse');
     if (editorState.variant === 'crazyhouse') {
       renderEditorPockets();
+    }
+  }
+
+  if (dom.editorQuantumGroup) {
+    dom.editorQuantumGroup.classList.toggle('hidden', editorState.variant !== 'schrodinger');
+    if (
+      editorState.variant !== 'schrodinger' &&
+      (editorState.selectedTool === 'wqm' || editorState.selectedTool === 'bqm')
+    ) {
+      editorState.selectedTool = null;
     }
   }
 

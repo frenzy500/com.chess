@@ -19,10 +19,15 @@ function getPieceType(code) {
   return code ? code.slice(1) : null;
 }
 
-function getPromotionTypes() {
-  const ordered = PROMOTION_ORDER.filter((k) => PIECE_DEFS[k] && PIECE_DEFS[k].canPromoteTo);
+function getPromotionTypes(state = null) {
+  if (state && getVariantDef(state).schrodinger) {
+    return ['qm'];
+  }
+  const ordered = PROMOTION_ORDER.filter(
+    (k) => PIECE_DEFS[k] && PIECE_DEFS[k].canPromoteTo && !PIECE_DEFS[k].isQuantum
+  );
   for (const key of Object.keys(PIECE_DEFS)) {
-    if (PIECE_DEFS[key].canPromoteTo && !ordered.includes(key)) {
+    if (PIECE_DEFS[key].canPromoteTo && !PIECE_DEFS[key].isQuantum && !ordered.includes(key)) {
       ordered.push(key);
     }
   }
@@ -30,9 +35,11 @@ function getPromotionTypes() {
 }
 
 function getDropPieceTypes() {
-  const ordered = POCKET_PIECE_ORDER.filter((k) => PIECE_DEFS[k] && !PIECE_DEFS[k].isRoyal);
+  const ordered = POCKET_PIECE_ORDER.filter(
+    (k) => PIECE_DEFS[k] && !PIECE_DEFS[k].isRoyal && !PIECE_DEFS[k].isQuantum
+  );
   for (const key of Object.keys(PIECE_DEFS)) {
-    if (!PIECE_DEFS[key].isRoyal && !ordered.includes(key)) {
+    if (!PIECE_DEFS[key].isRoyal && !PIECE_DEFS[key].isQuantum && !ordered.includes(key)) {
       ordered.push(key);
     }
   }
@@ -259,6 +266,7 @@ function makeHistoryFrame(state, meta = null) {
         }
       : null,
     dice: cloneDiceState(state.dice),
+    schrodinger: cloneSchrodingerMeta(state.schrodinger),
     fogVisible,
     fogVis,
     meta: meta ? { ...meta } : null
@@ -269,15 +277,21 @@ function createInitialState(variant = 'standard', options = {}) {
   const cleanVariant = Object.prototype.hasOwnProperty.call(VARIANT_DEFS, variant)
     ? variant
     : 'standard';
+  const startBoard =
+    cleanVariant === 'schrodinger' ? cloneBoard(SCHRODINGER_INITIAL_BOARD) : cloneBoard(INITIAL_BOARD);
+  const canCornerCastle = (row, col, color) => {
+    const piece = startBoard[row]?.[col];
+    return piece === color + 'r' || (cleanVariant === 'schrodinger' && piece === color + 'qm');
+  };
   const state = {
     variant: cleanVariant,
-    board: cloneBoard(INITIAL_BOARD),
+    board: startBoard,
     turn: 'w',
     castling: {
-      wK: INITIAL_BOARD[7][4] === 'wk' && INITIAL_BOARD[7][7] === 'wr',
-      wQ: INITIAL_BOARD[7][4] === 'wk' && INITIAL_BOARD[7][0] === 'wr',
-      bK: INITIAL_BOARD[0][4] === 'bk' && INITIAL_BOARD[0][7] === 'br',
-      bQ: INITIAL_BOARD[0][4] === 'bk' && INITIAL_BOARD[0][0] === 'br'
+      wK: startBoard[7][4] === 'wk' && canCornerCastle(7, 7, 'w'),
+      wQ: startBoard[7][4] === 'wk' && canCornerCastle(7, 0, 'w'),
+      bK: startBoard[0][4] === 'bk' && canCornerCastle(0, 7, 'b'),
+      bQ: startBoard[0][4] === 'bk' && canCornerCastle(0, 0, 'b')
     },
     enPassant: null,
     halfMoveClock: 0,
@@ -310,10 +324,17 @@ function createInitialState(variant = 'standard', options = {}) {
             }
           }
         : null,
-    dice: null
+    dice: null,
+    schrodinger:
+      cleanVariant === 'schrodinger'
+        ? cloneSchrodingerMeta(options.schrodinger) || createInitialSchrodingerMeta()
+        : null
   };
   if (cleanVariant === 'dice') {
     prepareTurnDice(state, options.diceValues || null);
+  }
+  if (cleanVariant === 'schrodinger') {
+    resolveSchrodingerState(state);
   }
   const key = computePositionKey(state);
   state.positionCounts[key] = 1;
@@ -325,20 +346,30 @@ function createCustomState(config = {}) {
   const cleanVariant = Object.prototype.hasOwnProperty.call(VARIANT_DEFS, config.variant)
     ? config.variant
     : 'standard';
-  const customBoard = config.board ? cloneBoard(config.board) : cloneBoard(INITIAL_BOARD);
+  const defaultBoard =
+    cleanVariant === 'schrodinger' ? SCHRODINGER_INITIAL_BOARD : INITIAL_BOARD;
+  const customBoard = config.board ? cloneBoard(config.board) : cloneBoard(defaultBoard);
   const turn = config.turn === 'b' ? 'b' : 'w';
 
+  const canCornerCastle = (row, col, color) => {
+    const piece = customBoard[row]?.[col];
+    return piece === color + 'r' || (cleanVariant === 'schrodinger' && piece === color + 'qm');
+  };
   const castlingInput = config.castling || {};
   const castling = {
-    wK: Boolean(castlingInput.wK && customBoard[7]?.[4] === 'wk' && customBoard[7]?.[7] === 'wr'),
-    wQ: Boolean(castlingInput.wQ && customBoard[7]?.[4] === 'wk' && customBoard[7]?.[0] === 'wr'),
-    bK: Boolean(castlingInput.bK && customBoard[0]?.[4] === 'bk' && customBoard[0]?.[7] === 'br'),
-    bQ: Boolean(castlingInput.bQ && customBoard[0]?.[4] === 'bk' && customBoard[0]?.[0] === 'br')
+    wK: Boolean(castlingInput.wK && customBoard[7]?.[4] === 'wk' && canCornerCastle(7, 7, 'w')),
+    wQ: Boolean(castlingInput.wQ && customBoard[7]?.[4] === 'wk' && canCornerCastle(7, 0, 'w')),
+    bK: Boolean(castlingInput.bK && customBoard[0]?.[4] === 'bk' && canCornerCastle(0, 7, 'b')),
+    bQ: Boolean(castlingInput.bQ && customBoard[0]?.[4] === 'bk' && canCornerCastle(0, 0, 'b'))
   };
 
   const pockets = {
     w: Array.isArray(config.pockets?.w) ? config.pockets.w.slice() : [],
     b: Array.isArray(config.pockets?.b) ? config.pockets.b.slice() : []
+  };
+  const captured = {
+    w: Array.isArray(config.captured?.w) ? config.captured.w.slice() : [],
+    b: Array.isArray(config.captured?.b) ? config.captured.b.slice() : []
   };
 
   let secretQueens = null;
@@ -372,7 +403,7 @@ function createCustomState(config = {}) {
     inCheck: false,
     lastMove: null,
     moveHistory: [],
-    captured: { w: [], b: [] },
+    captured,
     pockets,
     promoted: [],
     positionCounts: {},
@@ -381,8 +412,16 @@ function createCustomState(config = {}) {
     fogVisible: null,
     fogLegalMoves: null,
     secretQueens,
-    dice: null
+    dice: null,
+    schrodinger:
+      cleanVariant === 'schrodinger'
+        ? cloneSchrodingerMeta(config.schrodinger) || createInitialSchrodingerMeta()
+        : null
   };
+
+  if (cleanVariant === 'schrodinger') {
+    resolveSchrodingerState(state);
+  }
 
   state.inCheck = !getVariantDef(state).royalCaptureWins && isInCheck(state, turn);
 
@@ -401,7 +440,10 @@ function createCustomState(config = {}) {
     } else {
       const legalMoves = getAllLegalMoves(state);
       if (legalMoves.length === 0) {
-        if (state.inCheck) {
+        if (cleanVariant === 'schrodinger') {
+          state.status = 'no_moves';
+          state.winner = turn === 'w' ? 'b' : 'w';
+        } else if (state.inCheck) {
           state.status = 'checkmate';
           state.winner = turn === 'w' ? 'b' : 'w';
         } else {
@@ -468,6 +510,7 @@ function cloneState(state) {
           }
         : null,
       dice: cloneDiceState(f.dice),
+      schrodinger: cloneSchrodingerMeta(f.schrodinger),
       fogVisible: Array.isArray(f.fogVisible) ? f.fogVisible.slice() : null,
       fogVis: f.fogVis
         ? {
@@ -498,7 +541,8 @@ function cloneState(state) {
             : null
         }
       : null,
-    dice: cloneDiceState(state.dice)
+    dice: cloneDiceState(state.dice),
+    schrodinger: cloneSchrodingerMeta(state.schrodinger)
   };
 }
 
@@ -542,6 +586,13 @@ function computePositionKey(state) {
       : '-';
     extra += ` [SQ:${wStr}|${bStr}]`;
   }
+  if (vDef.schrodinger && state.schrodinger) {
+    const sw = state.schrodinger.w || {};
+    const sb = state.schrodinger.b || {};
+    const capW = (state.captured?.b || []).slice().sort().join(',');
+    const capB = (state.captured?.w || []).slice().sort().join(',');
+    extra += ` [SCH:${sw.promoL || 0},${sw.promoD || 0},${sw.capL || 0},${sw.capD || 0}|${sb.promoL || 0},${sb.promoD || 0},${sb.capL || 0},${sb.capD || 0}|${capW}|${capB}]`;
+  }
 
   return `${state.variant || 'standard'} ${rows} ${state.turn} ${cr} ${ep}${extra}`;
 }
@@ -567,6 +618,12 @@ function generatePseudoMoves(state, r, c, attacksOnly = false) {
 
   const vDef = getVariantDef(state);
   const moves = [];
+  const analysisState = state._schrodingerSourceState || state;
+  const isQuantumPiece = Boolean(vDef.schrodinger && isQuantumType(type));
+  const schAnalysis =
+    vDef.schrodinger && (isQuantumPiece || type === 'k')
+      ? computeSchrodingerSideAnalysis(analysisState, color)
+      : null;
 
   const isSecretQueen = Boolean(
     vDef.secretQueen &&
@@ -625,7 +682,10 @@ function generatePseudoMoves(state, r, c, attacksOnly = false) {
     return moves;
   }
 
-  if (def.leapOffsets) {
+  if (
+    def.leapOffsets &&
+    (!isQuantumPiece || canSchrodingerPieceMoveAs(analysisState, color, r, c, 'knight', schAnalysis))
+  ) {
     for (const [dr, dc] of def.leapOffsets) {
       const tr = r + dr;
       const tc = c + dc;
@@ -645,7 +705,16 @@ function generatePseudoMoves(state, r, c, attacksOnly = false) {
   }
 
   if (def.slideDirs) {
+    const canSlideStraight =
+      !isQuantumPiece || canSchrodingerPieceMoveAs(analysisState, color, r, c, 'straight', schAnalysis);
+    const canSlideDiag =
+      !isQuantumPiece || canSchrodingerPieceMoveAs(analysisState, color, r, c, 'diagonal', schAnalysis);
     for (const [dr, dc] of def.slideDirs) {
+      if (isQuantumPiece) {
+        const isDiag = dr !== 0 && dc !== 0;
+        if (isDiag && !canSlideDiag) continue;
+        if (!isDiag && !canSlideStraight) continue;
+      }
       let tr = r + dr;
       let tc = c + dc;
       while (inBounds(tr, tc)) {
@@ -684,7 +753,10 @@ function generatePseudoMoves(state, r, c, attacksOnly = false) {
         if (attacksOnly) return getPieceColor(state.board[rr][cc]) !== col;
         return canCaptureOccupant(state.board[rr][cc], col, state);
       },
-      getPromotionTypes,
+      canCastleCorner: vDef.schrodinger
+        ? (_st, col, hr, rc) => canCornerCastleInSchrodinger(analysisState, col, hr, rc, schAnalysis)
+        : null,
+      getPromotionTypes: () => getPromotionTypes(state),
       isInCheck,
       isSquareAttacked
     };
@@ -736,15 +808,22 @@ function getPremoveTargetsForSquare(state, r, c, color) {
   const soloBoard = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
   soloBoard[r][c] = code;
   const homeRow = color === 'w' ? 7 : 0;
-  if (state.board[homeRow][0] === color + 'r' && !(r === homeRow && c === 0)) soloBoard[homeRow][0] = color + 'r';
-  if (state.board[homeRow][7] === color + 'r' && !(r === homeRow && c === 7)) soloBoard[homeRow][7] = color + 'r';
+  const isCastleCornerPiece = (piece) =>
+    piece === color + 'r' || (state.variant === 'schrodinger' && piece === color + 'qm');
+  if (isCastleCornerPiece(state.board[homeRow][0]) && !(r === homeRow && c === 0)) {
+    soloBoard[homeRow][0] = state.board[homeRow][0];
+  }
+  if (isCastleCornerPiece(state.board[homeRow][7]) && !(r === homeRow && c === 7)) {
+    soloBoard[homeRow][7] = state.board[homeRow][7];
+  }
 
   const soloState = {
     variant: state.variant || 'standard',
     board: soloBoard,
     turn: color,
     castling: state.castling,
-    enPassant: null
+    enPassant: null,
+    _schrodingerSourceState: state
   };
   for (const m of generatePseudoMoves(soloState, r, c, false)) addTarget(m.to.r, m.to.c);
   for (const m of generatePseudoMoves(soloState, r, c, true)) addTarget(m.to.r, m.to.c);
@@ -802,7 +881,8 @@ function validateCustomPosition(
   variant = 'standard',
   pockets = null,
   castling = null,
-  secretQueens = null
+  secretQueens = null,
+  schrodinger = null
 ) {
   if (!board || !Array.isArray(board) || board.length !== 8) {
     return { valid: false, error: 'Invalid board configuration.' };
@@ -822,6 +902,9 @@ function validateCustomPosition(
     for (let c = 0; c < 8; c++) {
       const code = board[r][c];
       if (!code) continue;
+      if (variant !== 'schrodinger' && isQuantumType(getPieceType(code))) {
+        return { valid: false, error: 'Quantum pieces can only be used in Schrödinger\'s Chess.' };
+      }
       if (code === 'wk') {
         whiteKings++;
         whiteKingSq = { r, c };
@@ -880,6 +963,39 @@ function validateCustomPosition(
       return {
         valid: false,
         error: 'Secret Queen variant requires at least one pawn for each side.'
+      };
+    }
+  }
+
+  if (variant === 'schrodinger') {
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const code = board[r][c];
+        if (!code) continue;
+        const t = getPieceType(code);
+        const sqC = getSchrodingerSquareColor(r, c);
+        if ((t === 'bl' && sqC !== 'L') || (t === 'bd' && sqC !== 'D')) {
+          return { valid: false, error: 'Bishop/Queen piece color does not match its square color.' };
+        }
+      }
+    }
+    const probeSch = {
+      variant: 'schrodinger',
+      board,
+      turn,
+      captured: { w: [], b: [] },
+      schrodinger: cloneSchrodingerMeta(schrodinger) || createInitialSchrodingerMeta()
+    };
+    if (!isSchrodingerSideFeasible(probeSch, 'w')) {
+      return {
+        valid: false,
+        error: 'White pieces exceed Schrödinger pool limits (1Q, 2R, 1 Light B, 1 Dark B, 2N).'
+      };
+    }
+    if (!isSchrodingerSideFeasible(probeSch, 'b')) {
+      return {
+        valid: false,
+        error: 'Black pieces exceed Schrödinger pool limits (1Q, 2R, 1 Light B, 1 Dark B, 2N).'
       };
     }
   }
@@ -1381,6 +1497,7 @@ function formatMoveSAN(prevState, move, nextState) {
 
   const movingCode = prevState.board[move.from.r][move.from.c];
   let type = getPieceType(movingCode);
+  const preType = type;
   const moverColor = getPieceColor(movingCode);
   if (
     type === 'p' &&
@@ -1388,6 +1505,9 @@ function formatMoveSAN(prevState, move, nextState) {
     !prevState.secretQueens?.[moverColor]?.revealed
   ) {
     type = 'q';
+  } else if (vDef.schrodinger && isQuantumType(type)) {
+    const destCode = nextState.board[move.to.r]?.[move.to.c];
+    if (destCode) type = getPieceType(destCode);
   }
   const def = PIECE_DEFS[type];
   const isCapture = Boolean(move.captureSq);
@@ -1406,7 +1526,7 @@ function formatMoveSAN(prevState, move, nextState) {
     const symbol = def.symbol || type.toUpperCase();
     san += symbol;
 
-    const targetCode = moverColor + type;
+    const targetCode = moverColor + (vDef.schrodinger ? preType : type);
     const peers = [];
     for (let r = 0; r < BOARD_SIZE; r++) {
       for (let c = 0; c < BOARD_SIZE; c++) {
@@ -1527,6 +1647,15 @@ function applyMove(state, move, options = {}) {
         const trayOwner = capColor === 'w' ? 'b' : 'w';
         next.captured[trayOwner].push(capturedType);
 
+        if (vDef.schrodinger && next.schrodinger && capturedType === 'b') {
+          if (!next.schrodinger[capColor]) {
+            next.schrodinger[capColor] = createInitialSchrodingerSideMeta();
+          }
+          const capSqColor = getSchrodingerSquareColor(move.captureSq.r, move.captureSq.c);
+          if (capSqColor === 'L') next.schrodinger[capColor].capL += 1;
+          else next.schrodinger[capColor].capD += 1;
+        }
+
         // Crazyhouse: captured enemy non-Royal pieces join mover's pocket (promoted pawns demote to 'p'!)
         if (vDef.allowDrops && capColor !== pieceColor && !PIECE_DEFS[capturedType]?.isRoyal) {
           const bankedType = wasPromotedCapture ? 'p' : capturedType;
@@ -1574,6 +1703,32 @@ function applyMove(state, move, options = {}) {
       promoSet.delete(toKey);
     }
     next.promoted = Array.from(promoSet);
+
+    if (vDef.schrodinger) {
+      if (!next.schrodinger) next.schrodinger = createInitialSchrodingerMeta();
+      if (!next.schrodinger[pieceColor]) {
+        next.schrodinger[pieceColor] = createInitialSchrodingerSideMeta();
+      }
+      if (move.rookMove) {
+        const destRook = next.board[move.rookMove.to.r]?.[move.rookMove.to.c];
+        if (destRook === pieceColor + 'qm') {
+          next.board[move.rookMove.to.r][move.rookMove.to.c] = pieceColor + 'r';
+        }
+      }
+      if (move.promotion) {
+        const promoSqColor = getSchrodingerSquareColor(move.to.r, move.to.c);
+        if (promoSqColor === 'L') next.schrodinger[pieceColor].promoL += 1;
+        else next.schrodinger[pieceColor].promoD += 1;
+      } else if (isQuantumType(moverType)) {
+        next.board[move.to.r][move.to.c] = applySchrodingerMoveTransition(
+          next,
+          pieceColor,
+          movingCode,
+          move
+        );
+      }
+      resolveSchrodingerState(next);
+    }
 
     const def = PIECE_DEFS[moverType];
     if (def && typeof def.afterMove === 'function') {
@@ -1672,8 +1827,13 @@ function applyMove(state, move, options = {}) {
     } else {
       const opponentMoves = getAllLegalMoves(next, enemyColor);
       if (opponentMoves.length === 0) {
-        next.status = 'stalemate';
-        next.winner = null;
+        if (vDef.schrodinger) {
+          next.status = 'no_moves';
+          next.winner = turnColor;
+        } else {
+          next.status = 'stalemate';
+          next.winner = null;
+        }
       } else if (next.positionCounts[posKey] >= 3) {
         next.status = 'draw_repetition';
       } else if (next.halfMoveClock >= 100) {
@@ -1780,8 +1940,13 @@ function tryMakeMove(state, from, to, promotion = null) {
 
   let chosen = null;
   if (matching[0].promotion !== null) {
-    const validPromos = getPromotionTypes();
-    const wantedPromo = promotion && validPromos.includes(promotion) ? promotion : null;
+    const validPromos = getPromotionTypes(state);
+    const wantedPromo =
+      promotion && validPromos.includes(promotion)
+        ? promotion
+        : validPromos.length === 1
+          ? validPromos[0]
+          : null;
     if (!wantedPromo) return null;
     chosen = matching.find((m) => m.promotion === wantedPromo) || null;
   } else {

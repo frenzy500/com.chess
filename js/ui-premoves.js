@@ -364,7 +364,7 @@ function openPromotionPicker(from, to, color, viaDrag, isPremove = false) {
   };
   dom.promoMenu.replaceChildren();
 
-  for (const type of getPromotionTypes()) {
+  for (const type of getPromotionTypes(gameState)) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'promotion-option';
@@ -414,6 +414,10 @@ function requestOrOpenPromotion(from, to, viaDrag = false) {
   }
 
   if (legal[0].promotion !== null) {
+    if (getPromotionTypes(gameState).length === 1) {
+      submitPlayerMove(from, to, legal[0].promotion, viaDrag, false);
+      return true;
+    }
     const moverColor = getPieceColor(gameState.board[from.r][from.c]);
     clearSelection();
     openPromotionPicker(from, to, moverColor, viaDrag, false);
@@ -698,24 +702,21 @@ function applyPremoveStepToState(baseState, step, color) {
     const soloBoard = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(null));
     soloBoard[step.from.r][step.from.c] = movingCode;
     const homeRow = color === 'w' ? 7 : 0;
-    if (
-      baseState.board[homeRow][0] === color + 'r' &&
-      !(step.from.r === homeRow && step.from.c === 0)
-    ) {
-      soloBoard[homeRow][0] = color + 'r';
+    const isCastleCornerPiece = (piece) =>
+      piece === color + 'r' || (baseState.variant === 'schrodinger' && piece === color + 'qm');
+    if (isCastleCornerPiece(baseState.board[homeRow][0]) && !(step.from.r === homeRow && step.from.c === 0)) {
+      soloBoard[homeRow][0] = baseState.board[homeRow][0];
     }
-    if (
-      baseState.board[homeRow][7] === color + 'r' &&
-      !(step.from.r === homeRow && step.from.c === 7)
-    ) {
-      soloBoard[homeRow][7] = color + 'r';
+    if (isCastleCornerPiece(baseState.board[homeRow][7]) && !(step.from.r === homeRow && step.from.c === 7)) {
+      soloBoard[homeRow][7] = baseState.board[homeRow][7];
     }
     const soloState = {
       variant: baseState.variant || 'standard',
       board: soloBoard,
       turn: color,
       castling: baseState.castling,
-      enPassant: null
+      enPassant: null,
+      _schrodingerSourceState: baseState
     };
     matchedMove = generatePseudoMoves(soloState, step.from.r, step.from.c, false).find(
       (m) =>
@@ -727,6 +728,27 @@ function applyPremoveStepToState(baseState, step, color) {
 
   const nextBoard = cloneBoard(baseState.board);
   const nextCastling = { ...baseState.castling };
+  const nextCaptured = {
+    w: (baseState.captured?.w || []).slice(),
+    b: (baseState.captured?.b || []).slice()
+  };
+  let nextSchrodinger =
+    baseState.variant === 'schrodinger'
+      ? cloneSchrodingerMeta(baseState.schrodinger) || createInitialSchrodingerMeta()
+      : null;
+
+  const existingDestCode = nextBoard[step.to.r]?.[step.to.c];
+  if (nextSchrodinger && existingDestCode) {
+    const capColor = getPieceColor(existingDestCode);
+    const capType = getPieceType(existingDestCode);
+    const trayOwner = capColor === 'w' ? 'b' : 'w';
+    nextCaptured[trayOwner].push(capType);
+    if (capType === 'b') {
+      const capSqColor = getSchrodingerSquareColor(step.to.r, step.to.c);
+      if (capSqColor === 'L') nextSchrodinger[capColor].capL += 1;
+      else nextSchrodinger[capColor].capD += 1;
+    }
+  }
 
   nextBoard[step.from.r][step.from.c] = null;
 
@@ -739,7 +761,8 @@ function applyPremoveStepToState(baseState, step, color) {
     const rCode = nextBoard[rm.from.r][rm.from.c];
     if (rCode && getPieceColor(rCode) === color) {
       nextBoard[rm.from.r][rm.from.c] = null;
-      nextBoard[rm.to.r][rm.to.c] = rCode;
+      nextBoard[rm.to.r][rm.to.c] =
+        baseState.variant === 'schrodinger' && rCode === color + 'qm' ? color + 'r' : rCode;
     }
   }
 
@@ -755,11 +778,29 @@ function applyPremoveStepToState(baseState, step, color) {
     turn: color,
     castling: nextCastling,
     enPassant: null,
+    captured: nextCaptured,
+    schrodinger: nextSchrodinger,
     pockets: {
       w: (baseState.pockets?.w || []).slice(),
       b: (baseState.pockets?.b || []).slice()
     }
   };
+
+  if (nextProj.variant === 'schrodinger') {
+    if (step.promotion) {
+      const promoSqColor = getSchrodingerSquareColor(step.to.r, step.to.c);
+      if (promoSqColor === 'L') nextProj.schrodinger[color].promoL += 1;
+      else nextProj.schrodinger[color].promoD += 1;
+    } else if (isQuantumType(moverType)) {
+      nextProj.board[step.to.r][step.to.c] = applySchrodingerMoveTransition(
+        nextProj,
+        color,
+        movingCode,
+        { from: step.from, to: step.to }
+      );
+    }
+    resolveSchrodingerState(nextProj);
+  }
 
   const def = PIECE_DEFS[moverType];
   if (def && typeof def.afterMove === 'function') {
@@ -802,6 +843,11 @@ function getProjectedPremoveState(
     turn: color,
     castling: { ...state.castling },
     enPassant: state.enPassant ? { ...state.enPassant } : null,
+    captured: {
+      w: (state.captured?.w || []).slice(),
+      b: (state.captured?.b || []).slice()
+    },
+    schrodinger: cloneSchrodingerMeta(state.schrodinger),
     pockets: {
       w: (state.pockets?.w || []).slice(),
       b: (state.pockets?.b || []).slice()
@@ -823,6 +869,11 @@ function sanitizePremoveQueue() {
     turn: net.myColor,
     castling: { ...gameState.castling },
     enPassant: gameState.enPassant ? { ...gameState.enPassant } : null,
+    captured: {
+      w: (gameState.captured?.w || []).slice(),
+      b: (gameState.captured?.b || []).slice()
+    },
+    schrodinger: cloneSchrodingerMeta(gameState.schrodinger),
     pockets: {
       w: (gameState.pockets?.w || []).slice(),
       b: (gameState.pockets?.b || []).slice()
@@ -841,7 +892,7 @@ function sanitizePremoveQueue() {
 function doesPremoveRequirePromotion(projState, from, to, color) {
   const code = projState.board[from.r]?.[from.c];
   if (!code || getPieceColor(code) !== color) return false;
-  if (getPromotionTypes().length === 0) return false;
+  if (getPromotionTypes(projState).length === 0) return false;
 
   // 1. Current projected board
   const curProbe = { ...projState, turn: color };
@@ -944,6 +995,11 @@ function requestOrQueuePremove(from, to, viaDrag = false) {
   if (!targets.some((t) => t.r === to.r && t.c === to.c)) return false;
 
   if (doesPremoveRequirePromotion(projState, from, to, net.myColor)) {
+    const promoTypes = getPromotionTypes(projState);
+    if (promoTypes.length === 1) {
+      enqueuePremove(from, to, promoTypes[0]);
+      return true;
+    }
     clearSelection();
     openPromotionPicker(from, to, net.myColor, viaDrag, true);
     renderBoard();

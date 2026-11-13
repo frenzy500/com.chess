@@ -10,6 +10,7 @@ const TESTS = [
   'test_variants.js',
   'test_secret_queen.js',
   'test_dice_chess.js',
+  'test_schrodinger.js',
   'test_custom_position_and_home.js',
   'test_multi_premove_edges.js',
   'test_v2_features.js',
@@ -32,6 +33,7 @@ function checkSyntaxAndAssets() {
   ];
   const expectedJs = [
     'js/variants.js',
+    'js/schrodinger.js',
     'js/engine.js',
     'js/audio.js',
     'js/pieces.js',
@@ -43,6 +45,7 @@ function checkSyntaxAndAssets() {
     'js/ui-input.js',
     'js/ui-board.js',
     'js/ui-dice.js',
+    'js/ui-schrodinger.js',
     'js/ui-chat.js',
     'js/ui-panels.js',
     'js/main.js'
@@ -75,7 +78,7 @@ function checkSyntaxAndAssets() {
 console.log('=== Verifying Modular Structure, Asset Versions & JS Syntax ===');
 try {
   checkSyntaxAndAssets();
-  console.log(`PASS: 6 CSS modules + 15 JS modules validated (?v=${EXPECTED_ASSET_VERSION}), syntax clean.\n`);
+  console.log(`PASS: 6 CSS modules + 17 JS modules validated (?v=${EXPECTED_ASSET_VERSION}), syntax clean.\n`);
 } catch (err) {
   console.error(`FAIL: ${err.message}`);
   process.exit(1);

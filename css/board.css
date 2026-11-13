@@ -938,3 +938,269 @@
 .square.dice-eligible .piece {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.24));
 }
+
+/* ============================================================================
+ * Schrödinger's Chess Live Shared Quantum Pool HUD
+ * ============================================================================ */
+
+.schrodinger-bar {
+  width: var(--board-size);
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 9px 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sch-title-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sch-title-glyph {
+  color: var(--var-schrodinger-fg);
+  flex-shrink: 0;
+}
+
+.sch-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0.01em;
+}
+
+.sch-rule-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--var-schrodinger-bg);
+  border: 1px solid var(--var-schrodinger-border);
+  color: var(--var-schrodinger-fg);
+}
+
+.sch-sides {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.sch-side-card {
+  background: #1d1c1a;
+  border: 1px solid #35332f;
+  border-radius: 5px;
+  padding: 7px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.14s ease, background-color 0.14s ease;
+}
+
+.sch-side-card.active-turn {
+  border-color: var(--var-schrodinger-border);
+  background: #1d2526;
+}
+
+.sch-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.sch-side-label-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.sch-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.sch-swatch.white {
+  background: #f2f2f2;
+  border: 1px solid #777;
+}
+
+.sch-swatch.black {
+  background: #161616;
+  border: 1px solid #666;
+}
+
+.sch-side-name {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e4e1d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sch-unresolved-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--var-schrodinger-fg);
+  background: rgba(93, 224, 230, 0.12);
+  border: 1px solid rgba(93, 224, 230, 0.25);
+  border-radius: 10px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+.sch-slots-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sch-slot-chip {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: #2b2926;
+  border: 1px solid #48453f;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sch-slot-chip img {
+  width: 20px;
+  height: 20px;
+  display: block;
+}
+
+.sch-slot-chip.slot-open {
+  border-color: #5b7840;
+  background: #252b20;
+}
+
+.sch-slot-chip.slot-board {
+  opacity: 0.42;
+  background: #201f1d;
+  border-color: #363430;
+}
+
+.sch-slot-chip.slot-captured {
+  opacity: 0.34;
+  background: #2b1f1e;
+  border-color: #6b3b35;
+}
+
+.sch-slot-chip.slot-captured::after {
+  content: "x";
+  position: absolute;
+  top: -3px;
+  right: -2px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ff8c7a;
+}
+
+.sch-slot-chip.slot-claimed {
+  background: #1b2f33;
+  border: 1px dashed var(--var-schrodinger-fg);
+}
+
+.sch-slot-chip.slot-claimed::after {
+  content: "?";
+  position: absolute;
+  bottom: -2px;
+  right: 1px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--var-schrodinger-fg);
+}
+
+.sch-slot-chip.slot-promo {
+  border-color: var(--var-schrodinger-fg);
+  background: #1a3136;
+}
+
+.sch-slot-pip {
+  position: absolute;
+  bottom: -2px;
+  left: -2px;
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 1px 2px;
+  border-radius: 2px;
+  background: #151412;
+  color: #f4f2ec;
+  border: 1px solid #555;
+}
+
+.sch-slot-pip.sch-pip-bL {
+  background: #f0eee6;
+  color: #161513;
+  border-color: #b4b0a5;
+}
+
+.sch-slot-pip.sch-pip-bD {
+  background: #242320;
+  color: #f0eee6;
+  border-color: #6c6860;
+}
+
+.sch-slot-pip.sch-pip-promoL,
+.sch-slot-pip.sch-pip-promoD {
+  background: var(--var-schrodinger-bg);
+  color: var(--var-schrodinger-fg);
+  border-color: var(--var-schrodinger-border);
+}
+
+.sch-meta-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sch-meta-pill {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #262b2c;
+  border: 1px solid #3c5459;
+  color: #9deef2;
+}
+
+.sch-hint {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  background: #1c1b18;
+  border: 1px solid #32302c;
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
+.sch-hint.has-selection {
+  color: #baf6f9;
+  background: #182b2e;
+  border-color: var(--var-schrodinger-border);
+}
+

@@ -122,6 +122,7 @@ function cacheDom() {
   dom.editorTurnWhite = document.getElementById('editor-turn-white');
   dom.editorTurnBlack = document.getElementById('editor-turn-black');
   dom.editorVariantChips = document.getElementById('editor-variant-chips');
+  dom.editorQuantumGroup = document.getElementById('editor-quantum-group');
   dom.editorPocketsSection = document.getElementById('editor-pockets-section');
   dom.editorWhitePocket = document.getElementById('editor-white-pocket');
   dom.editorBlackPocket = document.getElementById('editor-black-pocket');
@@ -211,6 +212,10 @@ function cacheDom() {
   dom.diceSkipBadge = document.getElementById('dice-skip-badge');
   dom.dicePromptText = document.getElementById('dice-prompt-text');
   dom.diceSkipBtn = document.getElementById('dice-skip-btn');
+
+  dom.schrodingerBar = document.getElementById('schrodinger-bar');
+  dom.schrodingerSides = document.getElementById('schrodinger-sides');
+  dom.schrodingerHint = document.getElementById('schrodinger-hint');
 }
 
 function initUI() {
@@ -701,7 +706,9 @@ function initUI() {
 
   if (dom.editorResetBtn) {
     dom.editorResetBtn.addEventListener('click', () => {
-      editorState.board = cloneBoard(INITIAL_BOARD);
+      editorState.board = cloneBoard(
+        editorState.variant === 'schrodinger' ? SCHRODINGER_INITIAL_BOARD : INITIAL_BOARD
+      );
       editorState.turn = 'w';
       editorState.castling = { wK: true, wQ: true, bK: true, bQ: true };
       editorState.pockets = { w: [], b: [] };
@@ -1030,6 +1037,16 @@ if (typeof module !== 'undefined' && module.exports) {
     openLeaveConfirmModal,
     closeLeaveConfirmModal,
     openBoardEditor,
-    closeBoardEditor
+    closeBoardEditor,
+    SCHRODINGER_INITIAL_BOARD,
+    createInitialSchrodingerMeta,
+    isQuantumType,
+    getSchrodingerSquareColor,
+    computeSchrodingerSideAnalysis,
+    resolveSchrodingerState,
+    isSchrodingerSideFeasible,
+    canSchrodingerPieceMoveAs,
+    canCornerCastleInSchrodinger,
+    getSchrodingerHintForSquare
   };
 }

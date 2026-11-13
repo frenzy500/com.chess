@@ -329,6 +329,7 @@ function renderBoard() {
   dom.board.replaceChildren(fragment);
   renderArrowsOverlay();
   applyPendingSlideAnimations();
+  if (typeof updateSchrodingerHint === 'function') updateSchrodingerHint();
 }
 
 function formatClockText(ms) {
@@ -728,6 +729,8 @@ function renderStatusAndControls() {
       statusText = `Checkmate — ${winLabel} wins!`;
     } else if (gameState.status === 'king_captured') {
       statusText = `King captured — ${winLabel} wins!`;
+    } else if (gameState.status === 'no_moves') {
+      statusText = `No legal moves — ${winLabel} wins!`;
     } else if (gameState.status === 'timeout') {
       statusText = `Time out — ${winLabel} wins on time!`;
     } else if (gameState.status === 'resigned') {
@@ -981,6 +984,7 @@ function renderAll() {
   if (typeof document === 'undefined') return;
   renderBoard();
   renderDiceBar();
+  if (typeof renderSchrodingerBar === 'function') renderSchrodingerBar();
   renderPlayerBars();
   renderStatusAndControls();
   renderMoveHistory();

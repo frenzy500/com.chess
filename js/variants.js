@@ -88,6 +88,17 @@ const VARIANT_DEFS = {
     fogOfWar: false,
     royalCaptureWins: true,
     diceChess: true
+  },
+
+  schrodinger: {
+    name: "Schr\u00f6dinger's Chess",
+    shortName: "Schr\u00f6dinger",
+    description: 'Back-rank pieces start as ? sharing 1Q, 2R, 2B, 2N. Every move narrows what each piece can be — capture the King or leave no legal moves to win!',
+    allowSelfCapture: false,
+    allowDrops: false,
+    fogOfWar: false,
+    royalCaptureWins: true,
+    schrodinger: true
   }
 };
 
@@ -268,7 +279,9 @@ const PIECE_DEFS = {
 
       if (
         canKingside &&
-        helpers.pieceAt(homeRow, 7) === color + 'r' &&
+        (helpers.canCastleCorner
+          ? helpers.canCastleCorner(state, color, homeRow, 7)
+          : helpers.pieceAt(homeRow, 7) === color + 'r') &&
         helpers.isEmpty(homeRow, 5) &&
         helpers.isEmpty(homeRow, 6) &&
         (ignoreCheck ||
@@ -285,7 +298,9 @@ const PIECE_DEFS = {
 
       if (
         canQueenside &&
-        helpers.pieceAt(homeRow, 0) === color + 'r' &&
+        (helpers.canCastleCorner
+          ? helpers.canCastleCorner(state, color, homeRow, 0)
+          : helpers.pieceAt(homeRow, 0) === color + 'r') &&
         helpers.isEmpty(homeRow, 1) &&
         helpers.isEmpty(homeRow, 2) &&
         helpers.isEmpty(homeRow, 3) &&
@@ -303,6 +318,68 @@ const PIECE_DEFS = {
 
       return moves;
     }
+  },
+
+  // --- SCHRODINGER QUANTUM PIECES ---
+  qm: {
+    name: 'Quantum Piece',
+    symbol: '?',
+    value: 5,
+    isRoyal: false,
+    isQuantum: true,
+    canPromoteTo: false,
+    leapOffsets: [
+      [-2, -1], [-2, 1],
+      [-1, -2], [-1, 2],
+      [1, -2],  [1, 2],
+      [2, -1],  [2, 1]
+    ],
+    slideDirs: [
+      [-1, 0],  [1, 0],  [0, -1], [0, 1],
+      [-1, -1], [-1, 1], [1, -1], [1, 1]
+    ]
+  },
+
+  rq: {
+    name: 'Rook / Queen',
+    symbol: 'R/Q',
+    value: 7,
+    isRoyal: false,
+    isQuantum: true,
+    canPromoteTo: false,
+    leapOffsets: [],
+    slideDirs: [
+      [-1, 0],  [1, 0],  [0, -1], [0, 1],
+      [-1, -1], [-1, 1], [1, -1], [1, 1]
+    ]
+  },
+
+  bl: {
+    name: 'Light Bishop / Queen',
+    symbol: 'B/Q',
+    value: 5,
+    isRoyal: false,
+    isQuantum: true,
+    canPromoteTo: false,
+    leapOffsets: [],
+    slideDirs: [
+      [-1, 0],  [1, 0],  [0, -1], [0, 1],
+      [-1, -1], [-1, 1], [1, -1], [1, 1]
+    ]
+  },
+
+  bd: {
+    name: 'Dark Bishop / Queen',
+    symbol: 'B/Q',
+    value: 5,
+    isRoyal: false,
+    isQuantum: true,
+    canPromoteTo: false,
+    leapOffsets: [],
+    slideDirs: [
+      [-1, 0],  [1, 0],  [0, -1], [0, 1],
+      [-1, -1], [-1, 1], [1, -1], [1, 1]
+    ]
   }
 };
 
@@ -318,4 +395,15 @@ const INITIAL_BOARD = [
   [null, null, null, null, null, null, null, null],
   ['wp', 'wp', 'wp', 'wp', 'wp', 'wp', 'wp', 'wp'],
   ['wr', 'wn', 'wb', 'wq', 'wk', 'wb', 'wn', 'wr']
+];
+
+const SCHRODINGER_INITIAL_BOARD = [
+  ['bqm', 'bqm', 'bqm', 'bqm', 'bk', 'bqm', 'bqm', 'bqm'],
+  ['bp',  'bp',  'bp',  'bp',  'bp', 'bp',  'bp',  'bp'],
+  [null,  null,  null,  null,  null, null,  null,  null],
+  [null,  null,  null,  null,  null, null,  null,  null],
+  [null,  null,  null,  null,  null, null,  null,  null],
+  [null,  null,  null,  null,  null, null,  null,  null],
+  ['wp',  'wp',  'wp',  'wp',  'wp', 'wp',  'wp',  'wp'],
+  ['wqm', 'wqm', 'wqm', 'wqm', 'wk', 'wqm', 'wqm', 'wqm']
 ];

@@ -25,9 +25,9 @@ assert(
   `Cache-bust query strings bumped to ${expectedVersion}`
 );
 
-// Verify all 18 variant buttons (6 setup + 6 mobile + 6 local) have .variant-info-dot triggers
+// Verify all 21 variant buttons (7 setup + 7 mobile + 7 local) have .variant-info-dot triggers
 const dotMatches = indexHtml.match(/class="variant-info-dot[^"]*"\s+data-variant-info="[a-z]+"/g) || [];
-assert.strictEqual(dotMatches.length, 18, 'Expected 18 .variant-info-dot triggers across Setup, Mobile & Local bars');
+assert.strictEqual(dotMatches.length, 21, 'Expected 21 .variant-info-dot triggers across Setup, Mobile & Local bars');
 assert(styleCss.includes('@keyframes diceThrowLeft') && styleCss.includes('@keyframes diceThrowRight'), 'Physical throw animations defined in CSS');
 assert(styleCss.includes('@media (min-width: 1120px)'), 'Side tray desktop layout breakpoint defined in CSS');
 assert(!styleCss.includes('.square.dice-eligible::after'), 'Corner square .dice-eligible::after indicators removed');
@@ -197,7 +197,7 @@ const makeEl = (tag, id, hidden = false) => {
 };
 
 // Populate variant grids matching index.html structure
-const variants = ['standard', 'cannibal', 'crazyhouse', 'fog', 'secret', 'dice'];
+const variants = ['standard', 'cannibal', 'crazyhouse', 'fog', 'secret', 'dice', 'schrodinger'];
 const setupGrid = makeEl('div', 'setup-variant-grid');
 const mobileGrid = makeEl('div', 'mobile-variant-grid');
 const localBar = makeEl('div', 'local-variant-bar');

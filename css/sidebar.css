@@ -60,11 +60,21 @@
   color: var(--var-dice-fg);
 }
 
+.variant-icon-badge[data-variant="schrodinger"] {
+  background: var(--var-schrodinger-bg);
+  border-color: var(--var-schrodinger-border);
+  color: var(--var-schrodinger-fg);
+}
+
 .variant-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
   margin-bottom: 6px;
+}
+
+.variant-grid .variant-btn:last-child:nth-child(2n+1) {
+  grid-column: 1 / -1;
 }
 
 /* Odd number of variant cards: last card stretches across the full row */
@@ -201,6 +211,11 @@
 .variant-btn.active[data-variant="dice"] {
   background: #2b2033;
   border-color: #a97bd8;
+}
+
+.variant-btn.active[data-variant="schrodinger"] {
+  background: #172b2f;
+  border-color: var(--var-schrodinger-fg);
 }
 
 .variant-btn.active .variant-card-title {
@@ -732,6 +747,12 @@
   border-color: var(--var-dice-border);
 }
 
+.variant-tag[data-variant="schrodinger"] {
+  color: var(--var-schrodinger-fg);
+  background: var(--var-schrodinger-bg);
+  border-color: var(--var-schrodinger-border);
+}
+
 .game-feedback {
   margin: 9px 0 0;
   font-size: 12px;
@@ -952,9 +973,13 @@
   margin-bottom: 7px;
 }
 
-/* 6 variants: 3 equal buttons per row across 2 rows (Row 1: Standard/Cannibal/Crazyhouse, Row 2: Fog/Secret/Dice) */
+/* 7 variants: 3 equal buttons per row + wide 7th card cleanly centered across row 3 */
 .local-variant-bar .local-variant-btn {
   grid-column: auto;
+}
+
+.local-variant-bar .local-variant-btn:last-child:nth-child(3n+1) {
+  grid-column: 1 / -1;
 }
 
 .local-variant-btn {
@@ -1015,6 +1040,10 @@
   color: var(--var-dice-fg);
 }
 
+.local-variant-btn[data-variant="schrodinger"] .variant-mini-glyph {
+  color: var(--var-schrodinger-fg);
+}
+
 .local-variant-btn:hover {
   color: var(--text-main);
   border-color: #57544e;
@@ -1049,4 +1078,9 @@
 .local-variant-btn.active[data-variant="dice"] {
   background: #2b2033;
   border-color: #a97bd8;
+}
+
+.local-variant-btn.active[data-variant="schrodinger"] {
+  background: #172b2f;
+  border-color: var(--var-schrodinger-fg);
 }

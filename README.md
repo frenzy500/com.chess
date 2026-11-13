@@ -13,8 +13,9 @@ Static peer-to-peer multiplayer chess website with custom variants, authoritativ
   - `css/editor.css` — Custom position editor palette, controls, and leave-confirmation modal.
   - `css/responsive.css` — Desktop wide-screen tray layout (`min-width: 1120px`) and mobile ergonomic breakpoints (`max-width: 900px`).
 - `js/` — Ordered classic `<script>` modules loaded by `index.html` (no bundler required):
-  - `js/variants.js` — Variant rules (`standard`, `cannibal`, `crazyhouse`, `fog`, `secret`, `dice`), fairy piece definitions, and chat badge metadata.
-  - `js/engine.js` — Pure immutable chess engine, legal move generation, Secret Queen mechanics, Dice Chess rules, Fog of War visibility, custom FEN/position validator, and move application.
+  - `js/variants.js` — Variant rules (`standard`, `cannibal`, `crazyhouse`, `fog`, `secret`, `dice`, `schrodinger`), fairy piece definitions, and chat badge metadata.
+  - `js/schrodinger.js` — Schrödinger's Chess bipartite quantum pool solver, collapse deduction, castling/move guards, and square hints.
+  - `js/engine.js` — Pure immutable chess engine, legal move generation, Secret Queen mechanics, Dice Chess rules, Schrödinger's Chess hooks, Fog of War visibility, custom FEN/position validator, and move application.
   - `js/audio.js` — Web Audio API procedural sound effects.
   - `js/pieces.js` — Vector Staunton and custom piece SVG data URLs.
   - `js/state.js` — Mutable UI/game/clock/network state and setup configuration defaults.
@@ -25,11 +26,12 @@ Static peer-to-peer multiplayer chess website with custom variants, authoritativ
   - `js/ui-input.js` — Pointer drag/tap input, right-click arrows/highlights, and touch ergonomics.
   - `js/ui-board.js` — Board rendering, coordinate labels, pockets, clocks, move list, and SVG arrows.
   - `js/ui-dice.js` — Dice Chess 3D-style SVG die faces, roll animation, auto-roll toggle, and eligible-piece square highlights.
+  - `js/ui-schrodinger.js` — Schrödinger's Chess live shared Quantum Pool HUD and move-collapse hint bar.
   - `js/ui-chat.js` — P2P chat rendering, badge/emoji picker, mobile/desktop tab badges, and notification sound triggers.
   - `js/ui-panels.js` — Variant `(i)` tooltip portal, board editor controls, leave confirmation modal, PGN copy, and URL auto-join.
   - `js/main.js` — DOM wiring (`initUI`), event listeners, timers, and Node/CommonJS test exports.
-- `invite/` — Static HTML redirect pages with per-variant Open Graph previews (`standard.html`, `cannibal.html`, `crazyhouse.html`, `fog.html`, `secret.html`, `dice.html`) pointing to `assets/og/*.jpg`.
-- `tests/` — Verification runner (`tests/run-all.js`), shared loader (`tests/load-app.js`), and 12 automated suites covering engine perft, variants, premoves, networking, chat, mobile UI, and invite security.
+- `invite/` — Static HTML redirect pages with per-variant Open Graph previews (`standard.html`, `cannibal.html`, `crazyhouse.html`, `fog.html`, `secret.html`, `dice.html`, `schrodinger.html`) pointing to `assets/og/*.jpg`.
+- `tests/` — Verification runner (`tests/run-all.js`), shared loader (`tests/load-app.js`), and 13 automated suites covering engine perft, variants, Schrödinger's Chess, premoves, networking, chat, mobile UI, and invite security.
 
 ## Running Tests
 
