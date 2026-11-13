@@ -2275,6 +2275,10 @@ function playSound(kind) {
     case 'turnPass':
       playWoodTap(ctx, t, 200, 920, 0.14, 0.03);
       break;
+    case 'chat':
+      playToneNote(ctx, t, 587.33, 0.08, 0.09, 'sine');
+      playToneNote(ctx, t + 0.06, 783.99, 0.09, 0.13, 'triangle');
+      break;
     default:
       break;
   }
@@ -2442,6 +2446,18 @@ let resignConfirmTimer = null;
 let opponentDisconnected = false;
 let secretPickCol = null;
 
+// Peer-to-Peer Chat Session State (persists across rematches in the same room)
+const CHAT_MAX_MESSAGES = 120;
+const CHAT_MAX_TEXT_LENGTH = 500;
+const CHAT_MAX_IMAGE_DATA_URL_LENGTH = 180000;
+const CHAT_TARGET_IMAGE_DATA_URL_LENGTH = 120000;
+
+let chatMessages = [];
+let unreadChatCount = 0;
+let seenChatIds = new Set();
+let stagedChatImage = null; // { dataUrl: string, name: string } | null
+let desktopSidebarTab = 'moves'; // 'moves' | 'chat'
+
 const editorState = {
   active: false,
   board: Array.from({ length: 8 }, () => Array(8).fill(null)),
@@ -2496,6 +2512,33 @@ function allowIncomingPacket(data) {
   if (net.msgTimestamps.length >= 60) return false;
   net.msgTimestamps.push(now);
   return true;
+}
+
+function sanitizeChatText(raw) {
+  if (typeof raw !== 'string') return '';
+  return raw
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .trim()
+    .slice(0, CHAT_MAX_TEXT_LENGTH);
+}
+
+function sanitizeChatImageUrl(raw) {
+  if (typeof raw !== 'string') return null;
+  if (raw.length === 0 || raw.length > CHAT_MAX_IMAGE_DATA_URL_LENGTH) return null;
+  if (!/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(raw)) return null;
+  return raw;
+}
+
+function normalizeIncomingChatPacket(data) {
+  if (!data || typeof data !== 'object' || data.type !== 'chat_msg') return null;
+  const text = sanitizeChatText(data.text);
+  const imageDataUrl = sanitizeChatImageUrl(data.imageDataUrl);
+  if (!text && !imageDataUrl) return null;
+  const rawId = typeof data.id === 'string' ? data.id.slice(0, 80) : '';
+  const id = rawId || `peer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const ts = Number.isFinite(data.ts) && data.ts > 0 ? Math.floor(data.ts) : Date.now();
+  const senderName = sanitizePlayerName(data.senderName || net.peerName || 'Opponent');
+  return { id, ts, text, imageDataUrl, senderName };
 }
 
 function isValidCoordObj(obj) {
@@ -3835,6 +3878,8 @@ function handleHostIncomingData(data) {
     } else {
       renderAll();
     }
+  } else if (data.type === 'chat_msg') {
+    handleIncomingChatPacket(data);
   }
 }
 
@@ -3895,6 +3940,7 @@ function handleGuestIncomingData(data) {
       return;
     }
 
+    const wasAlreadyOnline = net.mode === 'online';
     net.currentMatchId = typeof data.matchId === 'string' ? data.matchId : 'm_' + Date.now();
     net.mode = 'online';
     net.myColor = data.yourColor;
@@ -3919,7 +3965,12 @@ function handleGuestIncomingData(data) {
     setGameFeedback('');
     playSound('gameStart');
     renderAll();
-    scrollBoardIntoViewOnMobile();
+    if (!wasAlreadyOnline) {
+      setMobileTab('play');
+      scrollBoardIntoViewOnMobile();
+    } else {
+      scrollBoardIntoViewOnMobile();
+    }
   } else if (data.type === 'sync_state') {
     const hydrated = validateAndHydrateState(data.state);
     if (!hydrated) return;
@@ -4053,6 +4104,8 @@ function handleGuestIncomingData(data) {
     if (gameState.status === 'playing') return;
     net.peerRematchWanted = true;
     renderAll();
+  } else if (data.type === 'chat_msg') {
+    handleIncomingChatPacket(data);
   }
 }
 
@@ -4124,11 +4177,17 @@ function cleanupNetworkSession() {
   net.msgTimestamps = [];
   net.rxPktIds.clear();
   net.relayChunks.clear();
+  chatMessages = [];
+  unreadChatCount = 0;
+  seenChatIds.clear();
+  stagedChatImage = null;
   opponentDisconnected = false;
   clockState.timed = false;
   clockState.running = false;
   premoveQueue = [];
   clearBoardTransientUI();
+  closeChatLightbox();
+  renderChatUI();
 }
 
 function runHeartbeatTick() {
@@ -4723,8 +4782,12 @@ const rcDrag = {
 
 const dom = {};
 
+function isMobileViewport() {
+  return typeof window !== 'undefined' && window.innerWidth <= 900;
+}
+
 function scrollBoardIntoViewOnMobile() {
-  if (typeof window !== 'undefined' && window.innerWidth <= 900 && typeof window.scrollTo === 'function') {
+  if (isMobileViewport() && typeof window.scrollTo === 'function') {
     try {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (_) {
@@ -4733,8 +4796,61 @@ function scrollBoardIntoViewOnMobile() {
   }
 }
 
+function scrollElementIntoViewOnMobile(el) {
+  if (isMobileViewport() && el && typeof el.scrollIntoView === 'function') {
+    try {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (_) {
+      el.scrollIntoView(false);
+    }
+  }
+}
+
+function isChatCurrentlyVisible() {
+  if (isMobileViewport()) {
+    return dom.sidebar?.dataset.mobileTab === 'chat';
+  }
+  return desktopSidebarTab === 'chat';
+}
+
+function syncChatUnreadState() {
+  if (isChatCurrentlyVisible() && unreadChatCount > 0) {
+    unreadChatCount = 0;
+  }
+  renderChatBadges();
+}
+
+function setDesktopTab(tabName) {
+  desktopSidebarTab = tabName === 'chat' ? 'chat' : 'moves';
+  if (dom.desktopTabMoves) {
+    const isMoves = desktopSidebarTab === 'moves';
+    dom.desktopTabMoves.classList.toggle('active', isMoves);
+    if (typeof dom.desktopTabMoves.setAttribute === 'function') {
+      dom.desktopTabMoves.setAttribute('aria-selected', String(isMoves));
+    }
+  }
+  if (dom.desktopTabChat) {
+    const isChat = desktopSidebarTab === 'chat';
+    dom.desktopTabChat.classList.toggle('active', isChat);
+    if (typeof dom.desktopTabChat.setAttribute === 'function') {
+      dom.desktopTabChat.setAttribute('aria-selected', String(isChat));
+    }
+  }
+  if (dom.movesSection) {
+    dom.movesSection.classList.toggle('hidden', desktopSidebarTab === 'chat');
+  }
+  if (dom.chatSection) {
+    dom.chatSection.classList.toggle('hidden', desktopSidebarTab !== 'chat');
+  }
+  if (desktopSidebarTab === 'chat') {
+    unreadChatCount = 0;
+    renderChatBadges();
+    scrollChatToBottom();
+  }
+}
+
 function setMobileTab(tabName) {
-  const valid = ['play', 'variants', 'moves'].includes(tabName) ? tabName : 'play';
+  const valid = ['play', 'variants', 'moves', 'chat'].includes(tabName) ? tabName : 'play';
   if (dom.sidebar) {
     dom.sidebar.dataset.mobileTab = valid;
   }
@@ -4742,6 +4858,11 @@ function setMobileTab(tabName) {
     for (const btn of dom.mobileTabs.querySelectorAll('.mobile-tab-btn')) {
       btn.classList.toggle('active', btn.dataset.tab === valid);
     }
+  }
+  if (valid === 'chat') {
+    unreadChatCount = 0;
+    renderChatBadges();
+    scrollChatToBottom();
   }
 }
 
@@ -4766,6 +4887,8 @@ function cacheDom() {
   dom.mobileStatusStrip = document.getElementById('mobile-status-strip');
   dom.mobileStatusText = document.getElementById('mobile-status-text');
   dom.mobileCancelPremoveBtn = document.getElementById('mobile-cancel-premove-btn');
+  dom.mobileChatPill = document.getElementById('mobile-chat-pill');
+  dom.mobileChatPillBadge = document.getElementById('mobile-chat-pill-badge');
   dom.mobileDrawBanner = document.getElementById('mobile-draw-banner');
   dom.mobAcceptDrawBtn = document.getElementById('mob-accept-draw-btn');
   dom.mobDeclineDrawBtn = document.getElementById('mob-decline-draw-btn');
@@ -4775,12 +4898,22 @@ function cacheDom() {
   dom.mobLocalActions = document.getElementById('mob-local-actions');
   dom.mobResetBtn = document.getElementById('mob-reset-btn');
   dom.mobPlayFriendBtn = document.getElementById('mob-play-friend-btn');
+  dom.mobWaitingActions = document.getElementById('mob-waiting-actions');
+  dom.mobShareLinkBtn = document.getElementById('mob-share-link-btn');
+  dom.mobCopyLinkBtn = document.getElementById('mob-copy-link-btn');
+  dom.mobCancelWaitBtn = document.getElementById('mob-cancel-wait-btn');
+  dom.mobJoiningActions = document.getElementById('mob-joining-actions');
+  dom.mobCancelJoinBtn = document.getElementById('mob-cancel-join-btn');
+  dom.mobSetupActions = document.getElementById('mob-setup-actions');
+  dom.mobSetupBackBtn = document.getElementById('mob-setup-back-btn');
   dom.mobOnlineActions = document.getElementById('mob-online-actions');
   dom.mobDrawBtn = document.getElementById('mob-draw-btn');
   dom.mobResignBtn = document.getElementById('mob-resign-btn');
   dom.mobRematchBtn = document.getElementById('mob-rematch-btn');
 
   dom.mobileTabs = document.getElementById('mobile-tabs');
+  dom.mobileChatTabBtn = document.getElementById('mobile-chat-tab-btn');
+  dom.mobileChatBadge = document.getElementById('mobile-chat-badge');
   dom.mobileVariantPanel = document.getElementById('mobile-variant-panel');
   dom.mobileVariantsHint = document.getElementById('mobile-variants-hint');
   dom.mobileVariantGrid = document.getElementById('mobile-variant-grid');
@@ -4892,6 +5025,28 @@ function cacheDom() {
   dom.navPrevBtn = document.getElementById('nav-prev-btn');
   dom.navNextBtn = document.getElementById('nav-next-btn');
   dom.navLastBtn = document.getElementById('nav-last-btn');
+
+  dom.desktopSidebarTabs = document.getElementById('desktop-sidebar-tabs');
+  dom.desktopTabMoves = document.getElementById('desktop-tab-moves');
+  dom.desktopTabChat = document.getElementById('desktop-tab-chat');
+  dom.desktopChatBadge = document.getElementById('desktop-chat-badge');
+  dom.movesSection = document.getElementById('moves-section');
+  dom.chatSection = document.getElementById('chat-section');
+  dom.chatStatusPill = document.getElementById('chat-status-pill');
+  dom.chatMessages = document.getElementById('chat-messages');
+  dom.chatStagedPreview = document.getElementById('chat-staged-preview');
+  dom.chatStagedImg = document.getElementById('chat-staged-img');
+  dom.chatStagedName = document.getElementById('chat-staged-name');
+  dom.chatRemoveImageBtn = document.getElementById('chat-remove-image-btn');
+  dom.chatStatusNote = document.getElementById('chat-status-note');
+  dom.chatForm = document.getElementById('chat-form');
+  dom.chatImageInput = document.getElementById('chat-image-input');
+  dom.chatAttachBtn = document.getElementById('chat-attach-btn');
+  dom.chatTextInput = document.getElementById('chat-text-input');
+  dom.chatSendBtn = document.getElementById('chat-send-btn');
+  dom.chatLightbox = document.getElementById('chat-lightbox');
+  dom.chatLightboxClose = document.getElementById('chat-lightbox-close');
+  dom.chatLightboxImg = document.getElementById('chat-lightbox-img');
 
   dom.localVariantBar = document.getElementById('local-variant-bar');
   dom.localControls = document.getElementById('local-controls');
@@ -7573,11 +7728,22 @@ function renderStatusAndControls() {
   if (dom.mobPrevBtn) dom.mobPrevBtn.disabled = viewPly <= minReplayPly;
   if (dom.mobNextBtn) dom.mobNextBtn.disabled = viewPly >= totalPlies;
   if (dom.mobLocalActions) dom.mobLocalActions.classList.toggle('hidden', net.mode !== 'local');
+  if (dom.mobWaitingActions) dom.mobWaitingActions.classList.toggle('hidden', net.mode !== 'waiting');
+  if (dom.mobJoiningActions) dom.mobJoiningActions.classList.toggle('hidden', net.mode !== 'joining');
+  if (dom.mobSetupActions) {
+    dom.mobSetupActions.classList.toggle('hidden', net.mode !== 'setup' && net.mode !== 'editor');
+  }
+  if (dom.mobSetupBackBtn) {
+    dom.mobSetupBackBtn.textContent = net.mode === 'editor' ? 'Exit Editor' : 'Back';
+  }
+  if (dom.mobShareLinkBtn) dom.mobShareLinkBtn.classList.toggle('hidden', !canNativeShare);
+  if (dom.mobCopyLinkBtn) {
+    dom.mobCopyLinkBtn.textContent = canNativeShare ? 'Copy' : 'Copy Link';
+  }
   if (dom.mobOnlineActions) dom.mobOnlineActions.classList.toggle('hidden', net.mode !== 'online');
   if (dom.mobPlayFriendBtn) {
     dom.mobPlayFriendBtn.disabled = net.mode === 'joining';
-    dom.mobPlayFriendBtn.textContent =
-      net.mode === 'waiting' ? `Code: ${net.roomCode || '-----'}` : 'Play Friend';
+    dom.mobPlayFriendBtn.textContent = 'Play Friend';
   }
 
   // Online Action Buttons (Offer Draw, Resign, Rematch)
@@ -7640,6 +7806,8 @@ function renderStatusAndControls() {
       }
     }
   }
+
+  renderChatUI();
 }
 
 function renderMoveHistory() {
@@ -8467,7 +8635,10 @@ function setGameFeedback(msg) {
 }
 
 function getInviteVariantSlug() {
-  const v = gameState?.variant || setupConfig?.variant || 'standard';
+  const v =
+    net.mode === 'setup' || net.mode === 'waiting'
+      ? setupConfig?.variant || gameState?.variant || 'standard'
+      : gameState?.variant || setupConfig?.variant || 'standard';
   return Object.prototype.hasOwnProperty.call(VARIANT_DEFS, v) ? v : 'standard';
 }
 
@@ -8493,13 +8664,379 @@ function buildInviteUrl(code) {
 async function copyTextWithFeedback(text, btnEl, defaultLabel) {
   try {
     await navigator.clipboard.writeText(text);
-    btnEl.textContent = 'Copied!';
-    setTimeout(() => {
-      btnEl.textContent = defaultLabel;
-    }, 1500);
+    if (btnEl) {
+      btnEl.textContent = 'Copied!';
+      setTimeout(() => {
+        btnEl.textContent = defaultLabel;
+      }, 1500);
+    }
   } catch (_) {
     setGameFeedback(text);
   }
+}
+
+async function shareCurrentInviteLink(fallbackBtnEl, fallbackDefaultLabel) {
+  if (!net.roomCode) return;
+  const inviteUrl = buildInviteUrl(net.roomCode);
+  const vName = getVariantDef(getInviteVariantSlug()).name;
+  if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+    try {
+      await navigator.share({
+        title: `${vName} — Chess Invite`,
+        text: `Play ${vName} with me! Code: ${net.roomCode}`,
+        url: inviteUrl
+      });
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+    }
+  }
+  copyTextWithFeedback(inviteUrl, fallbackBtnEl, fallbackDefaultLabel);
+}
+
+function copyCurrentInviteLink(btnEl, defaultLabel) {
+  if (!net.roomCode) return;
+  copyTextWithFeedback(buildInviteUrl(net.roomCode), btnEl, defaultLabel);
+}
+
+let lastRenderedChatSig = '';
+
+function formatChatTimestamp(ts) {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return '';
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+function scrollChatToBottom() {
+  if (dom.chatMessages) {
+    dom.chatMessages.scrollTop = dom.chatMessages.scrollHeight;
+  }
+}
+
+function renderChatBadges() {
+  const countText = unreadChatCount > 99 ? '99+' : String(unreadChatCount);
+  const hasUnread = unreadChatCount > 0;
+
+  if (dom.desktopChatBadge) {
+    dom.desktopChatBadge.textContent = countText;
+    dom.desktopChatBadge.classList.toggle('hidden', !hasUnread);
+  }
+  if (dom.mobileChatBadge) {
+    dom.mobileChatBadge.textContent = countText;
+    dom.mobileChatBadge.classList.toggle('hidden', !hasUnread);
+  }
+  if (dom.mobileChatPillBadge) {
+    dom.mobileChatPillBadge.textContent = countText;
+    dom.mobileChatPillBadge.classList.toggle('hidden', !hasUnread);
+  }
+  if (dom.mobileChatPill) {
+    const showPill = net.mode === 'online' || chatMessages.length > 0;
+    dom.mobileChatPill.classList.toggle('hidden', !showPill);
+    dom.mobileChatPill.classList.toggle('has-unread', hasUnread);
+  }
+}
+
+function renderStagedChatPreview() {
+  if (!dom.chatStagedPreview) return;
+  const hasImg = Boolean(stagedChatImage && stagedChatImage.dataUrl);
+  dom.chatStagedPreview.classList.toggle('hidden', !hasImg);
+  if (hasImg) {
+    if (dom.chatStagedImg) dom.chatStagedImg.src = stagedChatImage.dataUrl;
+    if (dom.chatStagedName) dom.chatStagedName.textContent = stagedChatImage.name || 'Image ready';
+  } else {
+    if (dom.chatStagedImg && typeof dom.chatStagedImg.removeAttribute === 'function') {
+      dom.chatStagedImg.removeAttribute('src');
+    }
+    if (dom.chatStagedName) dom.chatStagedName.textContent = '';
+  }
+}
+
+function clearStagedChatImage() {
+  stagedChatImage = null;
+  if (dom.chatImageInput) dom.chatImageInput.value = '';
+  renderStagedChatPreview();
+}
+
+function openChatLightbox(safeSrc) {
+  const valid = sanitizeChatImageUrl(safeSrc);
+  if (!valid || !dom.chatLightbox || !dom.chatLightboxImg) return;
+  dom.chatLightboxImg.src = valid;
+  dom.chatLightbox.classList.remove('hidden');
+}
+
+function closeChatLightbox() {
+  if (dom.chatLightbox) dom.chatLightbox.classList.add('hidden');
+  if (dom.chatLightboxImg && typeof dom.chatLightboxImg.removeAttribute === 'function') {
+    dom.chatLightboxImg.removeAttribute('src');
+  }
+}
+
+function setChatStatusNote(noteText) {
+  if (dom.chatStatusNote) {
+    dom.chatStatusNote.textContent = noteText;
+    dom.chatStatusNote.classList.toggle('hidden', !noteText);
+  }
+}
+
+function renderChatMessages(forceRebuild = false) {
+  if (!dom.chatMessages) return;
+  const lastId = chatMessages.length > 0 ? chatMessages[chatMessages.length - 1].id : '';
+  const sig = `${chatMessages.length}:${lastId}:${net.myName || ''}`;
+  if (!forceRebuild && sig === lastRenderedChatSig) return;
+  lastRenderedChatSig = sig;
+
+  if (chatMessages.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'chat-empty';
+    empty.textContent =
+      net.mode === 'online'
+        ? 'No messages yet. Say hi or share an image!'
+        : 'Connect with a friend online to chat and share images peer-to-peer.';
+    dom.chatMessages.replaceChildren(empty);
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  for (const msg of chatMessages) {
+    const bubble = document.createElement('div');
+    bubble.className = `chat-msg ${msg.mine ? 'mine' : 'peer'}`;
+
+    const meta = document.createElement('div');
+    meta.className = 'chat-msg-meta';
+    const who = document.createElement('span');
+    who.textContent = msg.mine ? net.myName || 'You' : msg.senderName || 'Opponent';
+    const timeEl = document.createElement('span');
+    timeEl.textContent = formatChatTimestamp(msg.ts);
+    meta.append(who, timeEl);
+    bubble.appendChild(meta);
+
+    if (msg.text) {
+      const p = document.createElement('p');
+      p.className = 'chat-msg-text';
+      p.textContent = msg.text;
+      bubble.appendChild(p);
+    }
+
+    const safeImg = sanitizeChatImageUrl(msg.imageDataUrl);
+    if (safeImg) {
+      const img = document.createElement('img');
+      img.className = 'chat-msg-img';
+      img.src = safeImg;
+      img.alt = 'Shared match image';
+      img.loading = 'lazy';
+      img.addEventListener('click', () => openChatLightbox(safeImg));
+      bubble.appendChild(img);
+    }
+
+    frag.appendChild(bubble);
+  }
+
+  dom.chatMessages.replaceChildren(frag);
+  scrollChatToBottom();
+}
+
+function renderChatUI() {
+  const onlineReady = net.mode === 'online' && !opponentDisconnected;
+  if (dom.chatStatusPill) {
+    dom.chatStatusPill.textContent = onlineReady
+      ? `Connected • ${net.peerName || 'Opponent'}`
+      : net.mode === 'online'
+        ? 'Reconnecting...'
+        : 'Offline';
+    dom.chatStatusPill.classList.toggle('live', onlineReady);
+  }
+
+  if (dom.chatTextInput) dom.chatTextInput.disabled = !onlineReady;
+  if (dom.chatAttachBtn) dom.chatAttachBtn.disabled = !onlineReady;
+  if (dom.chatSendBtn) dom.chatSendBtn.disabled = !onlineReady;
+
+  if (!onlineReady) {
+    setChatStatusNote(
+      net.mode === 'online'
+        ? 'Connection paused — chat resumes when your opponent reconnects.'
+        : 'Join or create an online game to chat and share images.'
+    );
+  } else {
+    setChatStatusNote('');
+  }
+
+  renderStagedChatPreview();
+  renderChatBadges();
+  renderChatMessages();
+}
+
+function appendChatMessage(entry, fromPeer) {
+  if (!entry || !entry.id) return false;
+  if (seenChatIds.has(entry.id)) return false;
+  seenChatIds.add(entry.id);
+  if (seenChatIds.size > 400) {
+    const oldest = seenChatIds.values().next().value;
+    if (oldest !== undefined) seenChatIds.delete(oldest);
+  }
+
+  chatMessages.push({
+    id: entry.id,
+    ts: entry.ts || Date.now(),
+    mine: Boolean(entry.mine),
+    senderName: entry.senderName || (entry.mine ? net.myName || 'You' : net.peerName || 'Opponent'),
+    text: entry.text || '',
+    imageDataUrl: entry.imageDataUrl || null
+  });
+  if (chatMessages.length > CHAT_MAX_MESSAGES) {
+    chatMessages = chatMessages.slice(-CHAT_MAX_MESSAGES);
+  }
+
+  if (fromPeer) {
+    playSound('chat');
+    if (!isChatCurrentlyVisible()) {
+      unreadChatCount++;
+    }
+  }
+  renderChatUI();
+  return true;
+}
+
+function handleIncomingChatPacket(data) {
+  const normalized = normalizeIncomingChatPacket(data);
+  if (!normalized) return false;
+  return appendChatMessage(
+    {
+      ...normalized,
+      mine: false
+    },
+    true
+  );
+}
+
+async function prepareChatImageDataUrl(file) {
+  if (!file || typeof file.type !== 'string' || !file.type.startsWith('image/')) {
+    throw new Error('Please choose a valid image file (PNG, JPEG, or WebP).');
+  }
+  if (file.size > 15 * 1024 * 1024) {
+    throw new Error('Image is too large (max 15 MB).');
+  }
+
+  const loadedUrl = await new Promise((resolve, reject) => {
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      resolve({ url: URL.createObjectURL(file), revoke: true });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve({ url: String(reader.result || ''), revoke: false });
+    reader.onerror = () => reject(new Error('Could not read image file.'));
+    reader.readAsDataURL(file);
+  });
+
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Unsupported or corrupted image.'));
+      el.src = loadedUrl.url;
+    });
+
+    const origW = Math.max(1, img.naturalWidth || img.width || 1);
+    const origH = Math.max(1, img.naturalHeight || img.height || 1);
+
+    const tryEncode = (maxDim, mime, quality) => {
+      const scale = Math.min(1, maxDim / Math.max(origW, origH));
+      const w = Math.max(1, Math.round(origW * scale));
+      const h = Math.max(1, Math.round(origH * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return null;
+      if (mime === 'image/jpeg') {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      return canvas.toDataURL(mime, quality);
+    };
+
+    const attempts = [
+      [640, 'image/webp', 0.82],
+      [640, 'image/webp', 0.68],
+      [640, 'image/jpeg', 0.78],
+      [640, 'image/jpeg', 0.64],
+      [480, 'image/jpeg', 0.62],
+      [360, 'image/jpeg', 0.56]
+    ];
+
+    for (const [maxDim, mime, quality] of attempts) {
+      const candidate = tryEncode(maxDim, mime, quality);
+      if (candidate && candidate.length <= CHAT_TARGET_IMAGE_DATA_URL_LENGTH) {
+        const valid = sanitizeChatImageUrl(candidate);
+        if (valid) return valid;
+      }
+    }
+
+    throw new Error('Image could not be compressed small enough for P2P chat.');
+  } finally {
+    if (loadedUrl.revoke && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      URL.revokeObjectURL(loadedUrl.url);
+    }
+  }
+}
+
+async function stageChatImageFile(file) {
+  if (!file) return false;
+  try {
+    setChatStatusNote('Compressing image...');
+    const dataUrl = await prepareChatImageDataUrl(file);
+    stagedChatImage = {
+      dataUrl,
+      name: file.name || 'image'
+    };
+    renderChatUI();
+    if (dom.chatTextInput && typeof dom.chatTextInput.focus === 'function') {
+      dom.chatTextInput.focus();
+    }
+    return true;
+  } catch (err) {
+    setChatStatusNote(err && err.message ? err.message : 'Could not attach image.');
+    return false;
+  }
+}
+
+function sendChatMessage(rawText) {
+  if (net.mode !== 'online' || opponentDisconnected || !isLogicalConnOpen(net.conn)) {
+    setChatStatusNote('Chat is available while connected to an online opponent.');
+    return false;
+  }
+  const text = sanitizeChatText(rawText);
+  const imageDataUrl = stagedChatImage ? sanitizeChatImageUrl(stagedChatImage.dataUrl) : null;
+  if (!text && !imageDataUrl) return false;
+
+  const id = `c_${net.localClientId}_${Date.now()}_${++net.txSeq}`;
+  const ts = Date.now();
+  const payload = {
+    type: 'chat_msg',
+    id,
+    ts,
+    senderName: net.myName || 'Guest',
+    text
+  };
+  if (imageDataUrl) payload.imageDataUrl = imageDataUrl;
+
+  appendChatMessage(
+    {
+      id,
+      ts,
+      mine: true,
+      senderName: net.myName || 'You',
+      text,
+      imageDataUrl
+    },
+    false
+  );
+  clearStagedChatImage();
+  if (dom.chatTextInput) dom.chatTextInput.value = '';
+  sendPacket(net.conn, payload);
+  return true;
 }
 
 function syncMyNameFromInput() {
@@ -8881,13 +9418,9 @@ function goHome(force = false) {
   setGameFeedback('');
 
   if (dom.sidebar) {
-    dom.sidebar.dataset.mobileTab = 'play';
+    setMobileTab('play');
   }
-  if (dom.mobileTabs) {
-    dom.mobileTabs.querySelectorAll('.mobile-tab-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.tab === 'play');
-    });
-  }
+  setDesktopTab('moves');
 
   gameState = createInitialState(setupConfig.variant || 'standard');
   viewPly = 0;
@@ -8926,11 +9459,9 @@ function openBoardEditor() {
   if (dom.editorError) dom.editorError.classList.add('hidden');
   initEditorPaletteIcons();
   syncEditorPanelUI();
+  setMobileTab('play');
   renderAll();
-
-  if (typeof window !== 'undefined' && window.innerWidth <= 900) {
-    if (dom.sidebar) dom.sidebar.dataset.mobileTab = 'play';
-  }
+  scrollElementIntoViewOnMobile(dom.gameEditor);
 }
 
 function closeBoardEditor() {
@@ -8940,6 +9471,7 @@ function closeBoardEditor() {
   editorState.selectedTool = null;
   editorState.validationError = null;
   renderAll();
+  scrollBoardIntoViewOnMobile();
 }
 
 function syncEditorCastlingValidity() {
@@ -9110,6 +9642,7 @@ function startLocalGameFromEditor() {
   setGameFeedback('');
   playSound('gameStart');
   renderAll();
+  scrollBoardIntoViewOnMobile();
   return true;
 }
 
@@ -9145,6 +9678,7 @@ function startOnlineGameFromEditor() {
   editorState.active = false;
   editorSelectedSq = null;
   editorState.selectedTool = null;
+  setMobileTab('play');
   createGameRoom();
   return true;
 }
@@ -9198,6 +9732,16 @@ function initUI() {
 
   // Keyboard Arrow Keys for Move History Replay (< / >) & Escape to cancel selection/premoves
   window.addEventListener('keydown', (e) => {
+    if (
+      e.key === 'Escape' &&
+      dom.chatLightbox &&
+      !dom.chatLightbox.classList.contains('hidden')
+    ) {
+      e.preventDefault();
+      closeChatLightbox();
+      return;
+    }
+
     const tag = e.target?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
 
@@ -9248,12 +9792,25 @@ function initUI() {
     dom.mobileSoundBtn.addEventListener('click', toggleSoundSetting);
   }
 
-  // Mobile Segmented Tabs & Variant Pill
+  // Mobile Segmented Tabs, Desktop Tabs, Chat Controls & Variant Pill
   if (dom.mobileTabs) {
     dom.mobileTabs.addEventListener('click', (e) => {
       const btn = e.target.closest('.mobile-tab-btn');
       if (!btn) return;
       setMobileTab(btn.dataset.tab);
+    });
+  }
+
+  if (dom.desktopTabMoves) {
+    dom.desktopTabMoves.addEventListener('click', () => setDesktopTab('moves'));
+  }
+  if (dom.desktopTabChat) {
+    dom.desktopTabChat.addEventListener('click', () => setDesktopTab('chat'));
+  }
+  if (dom.mobileChatPill) {
+    dom.mobileChatPill.addEventListener('click', () => {
+      setMobileTab('chat');
+      scrollElementIntoViewOnMobile(dom.sidebar);
     });
   }
 
@@ -9321,7 +9878,7 @@ function initUI() {
     renderAll();
   });
 
-  dom.setupBackBtn.addEventListener('click', () => {
+  const exitSetupToLocal = () => {
     net.mode = 'local';
     setGameFeedback('');
     if (
@@ -9335,7 +9892,9 @@ function initUI() {
       viewPly = 0;
     }
     renderAll();
-  });
+  };
+
+  dom.setupBackBtn.addEventListener('click', exitSetupToLocal);
 
   if (dom.setupVariantGrid) {
     dom.setupVariantGrid.addEventListener('click', (e) => {
@@ -9473,31 +10032,43 @@ function initUI() {
   });
 
   if (dom.shareLinkBtn) {
-    dom.shareLinkBtn.addEventListener('click', async () => {
-      if (!net.roomCode) return;
-      const inviteUrl = buildInviteUrl(net.roomCode);
-      const vName = getVariantDef(setupConfig.variant).name;
-      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-        try {
-          await navigator.share({
-            title: `${vName} — Chess Invite`,
-            text: `Play ${vName} with me! Code: ${net.roomCode}`,
-            url: inviteUrl
-          });
-          return;
-        } catch (err) {
-          if (err && err.name === 'AbortError') return;
-        }
-      }
-      copyTextWithFeedback(inviteUrl, dom.copyLinkBtn, 'Copy Invite Link');
+    dom.shareLinkBtn.addEventListener('click', () => {
+      shareCurrentInviteLink(dom.copyLinkBtn, 'Copy Invite Link');
     });
   }
 
   dom.copyLinkBtn.addEventListener('click', () => {
-    if (net.roomCode) {
-      copyTextWithFeedback(buildInviteUrl(net.roomCode), dom.copyLinkBtn, 'Copy Invite Link');
-    }
+    copyCurrentInviteLink(dom.copyLinkBtn, 'Copy Invite Link');
   });
+
+  if (dom.mobShareLinkBtn) {
+    dom.mobShareLinkBtn.addEventListener('click', () => {
+      shareCurrentInviteLink(dom.mobCopyLinkBtn, 'Copy');
+    });
+  }
+  if (dom.mobCopyLinkBtn) {
+    dom.mobCopyLinkBtn.addEventListener('click', () => {
+      const defaultLbl =
+        typeof navigator !== 'undefined' && typeof navigator.share === 'function' ? 'Copy' : 'Copy Link';
+      copyCurrentInviteLink(dom.mobCopyLinkBtn, defaultLbl);
+    });
+  }
+  if (dom.mobCancelWaitBtn) {
+    dom.mobCancelWaitBtn.addEventListener('click', () => goHome(true));
+  }
+  if (dom.mobCancelJoinBtn) {
+    dom.mobCancelJoinBtn.addEventListener('click', cancelJoin);
+  }
+  if (dom.mobSetupBackBtn) {
+    dom.mobSetupBackBtn.addEventListener('click', () => {
+      if (net.mode === 'editor') {
+        closeBoardEditor();
+      } else {
+        exitSetupToLocal();
+        scrollBoardIntoViewOnMobile();
+      }
+    });
+  }
 
   dom.cancelGameBtn.addEventListener('click', () => {
     goHome(true);
@@ -9772,6 +10343,76 @@ function initUI() {
     dom.diceSkipBtn.addEventListener('click', () => executeDicePassTurn());
   }
 
+  // P2P Chat & Image Upload / Paste / Drag-Drop / Lightbox Listeners
+  if (dom.chatForm) {
+    dom.chatForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      sendChatMessage(dom.chatTextInput ? dom.chatTextInput.value : '');
+    });
+  }
+  if (dom.chatAttachBtn && dom.chatImageInput) {
+    dom.chatAttachBtn.addEventListener('click', () => {
+      if (net.mode !== 'online' || opponentDisconnected) return;
+      dom.chatImageInput.click();
+    });
+  }
+  if (dom.chatImageInput) {
+    dom.chatImageInput.addEventListener('change', (e) => {
+      const file = e.target?.files?.[0];
+      if (file) stageChatImageFile(file);
+    });
+  }
+  if (dom.chatRemoveImageBtn) {
+    dom.chatRemoveImageBtn.addEventListener('click', clearStagedChatImage);
+  }
+  if (dom.chatTextInput) {
+    dom.chatTextInput.addEventListener('paste', (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item && item.kind === 'file' && typeof item.type === 'string' && item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            stageChatImageFile(file);
+            return;
+          }
+        }
+      }
+    });
+  }
+  if (dom.chatSection) {
+    dom.chatSection.addEventListener('dragover', (e) => {
+      if (net.mode !== 'online' || opponentDisconnected) return;
+      e.preventDefault();
+      dom.chatSection.classList.add('drag-over');
+    });
+    dom.chatSection.addEventListener('dragleave', (e) => {
+      if (e.relatedTarget && dom.chatSection.contains(e.relatedTarget)) return;
+      dom.chatSection.classList.remove('drag-over');
+    });
+    dom.chatSection.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dom.chatSection.classList.remove('drag-over');
+      if (net.mode !== 'online' || opponentDisconnected) return;
+      const file = e.dataTransfer?.files?.[0];
+      if (file && typeof file.type === 'string' && file.type.startsWith('image/')) {
+        stageChatImageFile(file);
+      }
+    });
+  }
+  if (dom.chatLightboxClose) {
+    dom.chatLightboxClose.addEventListener('click', closeChatLightbox);
+  }
+  if (dom.chatLightbox) {
+    dom.chatLightbox.addEventListener('click', (e) => {
+      if (e.target === dom.chatLightbox) closeChatLightbox();
+    });
+  }
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('resize', syncChatUnreadState);
+  }
+
   // Live 100ms clock refresh
   if (clockState.intervalId) clearInterval(clockState.intervalId);
   clockState.intervalId = setInterval(tickClocksUIAndAuthority, 100);
@@ -9912,6 +10553,16 @@ if (typeof module !== 'undefined' && module.exports) {
     setDiceRoll,
     prepareTurnDice,
     rollDiceForState,
-    applyDicePassTurn
+    applyDicePassTurn,
+    getInviteVariantSlug,
+    buildInviteUrl,
+    sanitizeChatText,
+    sanitizeChatImageUrl,
+    normalizeIncomingChatPacket,
+    handleIncomingChatPacket,
+    setMobileTab,
+    setDesktopTab,
+    openBoardEditor,
+    closeBoardEditor
   };
 }

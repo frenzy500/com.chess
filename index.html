@@ -12,16 +12,16 @@
   <meta property="og:url" content="https://frenzy500.github.io/com.chess/">
   <meta property="og:title" content="Chess — Instant Multiplayer Variants">
   <meta property="og:description" content="Standard, Dice Chess, Secret Queen, Fog of War, Crazyhouse & Cannibal Chess — instant 1v1 browser matches with zero signup.">
-  <meta property="og:image" content="https://frenzy500.github.io/com.chess/assets/og/standard.jpg">
+  <meta property="og:image" content="https://frenzy500.github.io/com.chess/assets/og/standard.jpg?v=20261113g">
   <meta property="og:image:type" content="image/jpeg">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Chess — Instant Multiplayer Variants">
   <meta name="twitter:description" content="Standard, Dice Chess, Secret Queen, Fog of War, Crazyhouse & Cannibal Chess — instant 1v1 browser matches with zero signup.">
-  <meta name="twitter:image" content="https://frenzy500.github.io/com.chess/assets/og/standard.jpg">
+  <meta name="twitter:image" content="https://frenzy500.github.io/com.chess/assets/og/standard.jpg?v=20261113g">
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23739552'/%3E%3Crect x='4' y='4' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3Crect x='16' y='16' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=20261113f">
+  <link rel="stylesheet" href="style.css?v=20261113g">
 </head>
 <body>
   <!-- Inline Vector Icon Sprite (Font Awesome 6 Free Solid CC-BY-4.0 & Game-Icons CC-BY-3.0) -->
@@ -232,7 +232,13 @@
       <div class="mobile-action-dock" id="mobile-action-dock">
         <div class="mobile-status-strip" id="mobile-status-strip">
           <span class="mobile-status-text" id="mobile-status-text">White to move</span>
-          <button type="button" class="clear-premove-chip hidden" id="mobile-cancel-premove-btn">Clear Premoves</button>
+          <div class="mobile-status-right">
+            <button type="button" class="clear-premove-chip hidden" id="mobile-cancel-premove-btn">Clear Premoves</button>
+            <button type="button" class="mobile-chat-pill hidden" id="mobile-chat-pill" aria-label="Open P2P Chat">
+              <span>Chat</span>
+              <span class="tab-unread-badge hidden" id="mobile-chat-pill-badge">0</span>
+            </button>
+          </div>
         </div>
 
         <div class="mobile-draw-banner hidden" id="mobile-draw-banner">
@@ -256,6 +262,20 @@
             <button type="button" class="btn btn-secondary btn-mob" id="mob-reset-btn">Reset</button>
             <button type="button" class="btn btn-secondary btn-mob" id="mob-custom-position-btn" title="Custom Board Editor">Custom</button>
             <button type="button" class="btn btn-primary btn-mob" id="mob-play-friend-btn">Play Friend</button>
+          </div>
+
+          <div class="mobile-main-actions hidden" id="mob-waiting-actions">
+            <button type="button" class="btn btn-primary btn-mob hidden" id="mob-share-link-btn">Share Invite</button>
+            <button type="button" class="btn btn-primary btn-mob" id="mob-copy-link-btn">Copy Link</button>
+            <button type="button" class="btn btn-secondary btn-mob" id="mob-cancel-wait-btn">Cancel</button>
+          </div>
+
+          <div class="mobile-main-actions hidden" id="mob-joining-actions">
+            <button type="button" class="btn btn-secondary btn-mob" id="mob-cancel-join-btn">Cancel Join</button>
+          </div>
+
+          <div class="mobile-main-actions hidden" id="mob-setup-actions">
+            <button type="button" class="btn btn-secondary btn-mob" id="mob-setup-back-btn">Back</button>
           </div>
 
           <div class="mobile-main-actions hidden" id="mob-online-actions">
@@ -300,11 +320,15 @@
         </div>
       </header>
 
-      <!-- Mobile Segmented Navigation (Play Online | Variants | Moves) -->
+      <!-- Mobile Segmented Navigation (Play Online | Variants | Moves | Chat) -->
       <nav class="mobile-tabs" id="mobile-tabs" aria-label="Mobile sections">
-        <button type="button" class="mobile-tab-btn active" data-tab="play">Play Online</button>
+        <button type="button" class="mobile-tab-btn active" data-tab="play">Play</button>
         <button type="button" class="mobile-tab-btn" data-tab="variants">Variants</button>
         <button type="button" class="mobile-tab-btn" data-tab="moves">Moves</button>
+        <button type="button" class="mobile-tab-btn" id="mobile-chat-tab-btn" data-tab="chat">
+          <span>Chat</span>
+          <span class="tab-unread-badge hidden" id="mobile-chat-badge">0</span>
+        </button>
       </nav>
 
       <!-- Game Room & Match Settings Box -->
@@ -676,6 +700,15 @@
         </div>
       </div>
 
+      <!-- Desktop Panel Switcher (Moves | P2P Chat) -->
+      <div class="desktop-sidebar-tabs" id="desktop-sidebar-tabs" role="tablist" aria-label="Sidebar panel">
+        <button type="button" class="desktop-tab-btn active" id="desktop-tab-moves" data-desktop-tab="moves" role="tab" aria-selected="true">Moves</button>
+        <button type="button" class="desktop-tab-btn" id="desktop-tab-chat" data-desktop-tab="chat" role="tab" aria-selected="false">
+          <span>Chat</span>
+          <span class="tab-unread-badge hidden" id="desktop-chat-badge">0</span>
+        </button>
+      </div>
+
       <!-- Algebraic Move History + Replay Navigation -->
       <div class="moves-section" id="moves-section">
         <div class="moves-header">
@@ -690,6 +723,33 @@
           <button type="button" class="replay-btn" id="nav-last-btn" title="Live board (Down Arrow)" aria-label="Latest move">&gt;|</button>
         </div>
       </div>
+
+      <!-- Peer-to-Peer Encrypted Match Chat (Text + Compressed Images) -->
+      <section class="chat-section hidden" id="chat-section" aria-label="Peer-to-peer chat">
+        <div class="chat-header">
+          <span>Match Chat</span>
+          <span class="chat-status-pill" id="chat-status-pill">Offline</span>
+        </div>
+        <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
+        <div class="chat-staged-preview hidden" id="chat-staged-preview">
+          <img class="chat-staged-img" id="chat-staged-img" alt="Attached image preview">
+          <span class="chat-staged-name" id="chat-staged-name">Image ready</span>
+          <button type="button" class="chat-remove-image-btn" id="chat-remove-image-btn" aria-label="Remove attached image">&times;</button>
+        </div>
+        <div class="chat-status-note" id="chat-status-note">Connect to an online friend to chat or share images.</div>
+        <form class="chat-form" id="chat-form" autocomplete="off">
+          <input type="file" id="chat-image-input" accept="image/*" class="hidden">
+          <button type="button" class="chat-attach-btn" id="chat-attach-btn" title="Attach image (or paste / drop)" aria-label="Attach image">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+              <polyline points="21 15 16 10 5 21"></polyline>
+            </svg>
+          </button>
+          <input type="text" class="chat-text-input" id="chat-text-input" maxlength="500" placeholder="Message or paste image..." aria-label="Chat message" autocomplete="off">
+          <button type="submit" class="btn btn-primary btn-sm chat-send-btn" id="chat-send-btn">Send</button>
+        </form>
+      </section>
 
       <!-- Footer Action Buttons -->
       <footer class="controls-footer" id="controls-footer">
@@ -740,6 +800,12 @@
     </aside>
   </main>
 
+  <!-- Chat Image Lightbox Modal -->
+  <div class="chat-lightbox hidden" id="chat-lightbox" role="dialog" aria-modal="true" aria-label="Full size chat image">
+    <button type="button" class="chat-lightbox-close" id="chat-lightbox-close" aria-label="Close image viewer">&times;</button>
+    <img class="chat-lightbox-img" id="chat-lightbox-img" alt="Shared chat image">
+  </div>
+
   <!-- Variant Rule Info Floating Tooltip (outside sidebar so never clipped) -->
   <div class="variant-tooltip hidden" id="variant-tooltip" role="tooltip"></div>
 
@@ -751,6 +817,6 @@
     src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"
     onerror="var s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';document.head.appendChild(s);"
   ></script>
-  <script src="game.js?v=20261113f"></script>
+  <script src="game.js?v=20261113g"></script>
 </body>
 </html>
