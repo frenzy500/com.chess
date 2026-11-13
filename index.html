@@ -7,7 +7,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>Chess — Instant Multiplayer Chess</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23739552'/%3E%3Crect x='4' y='4' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3Crect x='16' y='16' width='12' height='12' rx='1' fill='%23ebecd0'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css?v=20261113d">
+  <link rel="stylesheet" href="style.css?v=20261113e">
 </head>
 <body>
   <!-- Inline Vector Icon Sprite (Font Awesome 6 Free Solid CC-BY-4.0 & Game-Icons CC-BY-3.0) -->
@@ -118,21 +118,71 @@
         </div>
       </div>
 
-      <div class="board-shell" id="board-shell">
-        <div class="board" id="board" role="grid" aria-label="Chessboard"></div>
+      <div class="board-stage" id="board-stage">
+        <div class="board-shell" id="board-shell">
+          <div class="board" id="board" role="grid" aria-label="Chessboard"></div>
 
-        <!-- SVG Overlay for Right-Click Tactical Arrows -->
-        <svg
-          class="board-arrows"
-          id="board-arrows"
-          viewBox="0 0 800 800"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        ></svg>
+          <!-- SVG Overlay for Right-Click Tactical Arrows -->
+          <svg
+            class="board-arrows"
+            id="board-arrows"
+            viewBox="0 0 800 800"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          ></svg>
 
-        <!-- Pawn Promotion Chooser -->
-        <div class="promotion-backdrop hidden" id="promotion-backdrop">
-          <div class="promotion-menu" id="promotion-menu" role="dialog" aria-label="Choose promotion piece"></div>
+          <!-- Pawn Promotion Chooser -->
+          <div class="promotion-backdrop hidden" id="promotion-backdrop">
+            <div class="promotion-menu" id="promotion-menu" role="dialog" aria-label="Choose promotion piece"></div>
+          </div>
+        </div>
+
+        <!-- Dice Chess Side Tray / Roll Panel -->
+        <div class="dice-bar hidden" id="dice-bar" role="region" aria-label="Dice Chess roll">
+          <div class="dice-tray-head">
+            <span class="dice-tray-title">Dice</span>
+            <label
+              class="dice-autoroll-label"
+              for="dice-autoroll-toggle"
+              title="Automatically roll dice at the start of your turn"
+            >
+              <input type="checkbox" class="dice-autoroll-input" id="dice-autoroll-toggle">
+              <span class="dice-autoroll-track" aria-hidden="true"></span>
+              <span class="dice-autoroll-text">Auto</span>
+            </label>
+          </div>
+
+          <div class="dice-felt-well" id="dice-felt-well">
+            <div class="dice-pair" id="dice-pair">
+              <button type="button" class="die-card" id="die-card-1" title="Roll dice or select piece 1">
+                <svg class="die-face-svg" id="die-svg-1" viewBox="0 0 40 40" aria-hidden="true"></svg>
+                <div class="die-piece-meta">
+                  <img class="die-piece-img" id="die-piece-img-1" alt="" draggable="false">
+                  <span class="die-piece-label" id="die-label-1">Pawn</span>
+                </div>
+              </button>
+              <button type="button" class="die-card" id="die-card-2" title="Roll dice or select piece 2">
+                <svg class="die-face-svg" id="die-svg-2" viewBox="0 0 40 40" aria-hidden="true"></svg>
+                <div class="die-piece-meta">
+                  <img class="die-piece-img" id="die-piece-img-2" alt="" draggable="false">
+                  <span class="die-piece-label" id="die-label-2">Knight</span>
+                </div>
+              </button>
+            </div>
+            <button type="button" class="btn btn-primary btn-sm dice-roll-btn" id="dice-roll-btn">
+              Roll Dice
+            </button>
+          </div>
+
+          <div class="dice-info" id="dice-info">
+            <div class="dice-badges" id="dice-badges">
+              <span class="dice-badge dice-badge-doubles hidden" id="dice-doubles-badge">Wild • Any Piece</span>
+              <span class="dice-badge dice-badge-castle hidden" id="dice-castle-badge">Castle OK</span>
+              <span class="dice-badge dice-badge-skip hidden" id="dice-skip-badge">No Legal Moves</span>
+            </div>
+            <span class="dice-prompt-text" id="dice-prompt-text">Click dice to roll</span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm hidden" id="dice-skip-btn">Pass Turn</button>
         </div>
       </div>
 
@@ -143,31 +193,6 @@
           <button type="button" class="btn btn-secondary btn-sm" id="secret-random-btn">Random</button>
           <button type="button" class="btn btn-primary btn-sm" id="secret-confirm-btn" disabled>Confirm</button>
         </div>
-      </div>
-
-      <!-- Dice Chess Roll Bar -->
-      <div class="dice-bar hidden" id="dice-bar" role="region" aria-label="Dice Chess roll">
-        <div class="dice-pair" id="dice-pair">
-          <button type="button" class="die-card" id="die-card-1" title="Select rolled piece 1">
-            <svg class="die-face-svg" id="die-svg-1" viewBox="0 0 40 40" aria-hidden="true"></svg>
-            <img class="die-piece-img" id="die-piece-img-1" alt="" draggable="false">
-            <span class="die-piece-label" id="die-label-1">Pawn</span>
-          </button>
-          <button type="button" class="die-card" id="die-card-2" title="Select rolled piece 2">
-            <svg class="die-face-svg" id="die-svg-2" viewBox="0 0 40 40" aria-hidden="true"></svg>
-            <img class="die-piece-img" id="die-piece-img-2" alt="" draggable="false">
-            <span class="die-piece-label" id="die-label-2">Knight</span>
-          </button>
-        </div>
-        <div class="dice-info" id="dice-info">
-          <div class="dice-badges" id="dice-badges">
-            <span class="dice-badge dice-badge-doubles hidden" id="dice-doubles-badge">Wild • Any Piece</span>
-            <span class="dice-badge dice-badge-castle hidden" id="dice-castle-badge">Castle OK</span>
-            <span class="dice-badge dice-badge-skip hidden" id="dice-skip-badge">No Legal Moves</span>
-          </div>
-          <span class="dice-prompt-text" id="dice-prompt-text">Move a Pawn or Knight</span>
-        </div>
-        <button type="button" class="btn btn-secondary btn-sm hidden" id="dice-skip-btn">Pass</button>
       </div>
 
       <div class="player-bar" id="bottom-player-bar">
@@ -712,6 +737,6 @@
     src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"
     onerror="var s=document.createElement('script');s.src='https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';document.head.appendChild(s);"
   ></script>
-  <script src="game.js?v=20261113d"></script>
+  <script src="game.js?v=20261113e"></script>
 </body>
 </html>

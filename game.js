@@ -395,17 +395,33 @@ const PIECE_TO_DIE_MAP = {
   k: 6
 };
 
+function createPendingDiceState() {
+  return {
+    values: null,
+    rolled: false,
+    isDoubles: false,
+    noLegalMoves: false
+  };
+}
+
 function cloneDiceState(dice) {
-  if (!dice || !Array.isArray(dice.values) || dice.values.length !== 2) return null;
+  if (!dice || typeof dice !== 'object') return null;
+  if (dice.rolled === false || dice.values === null) {
+    return createPendingDiceState();
+  }
+  if (!Array.isArray(dice.values) || dice.values.length !== 2) return null;
   return {
     values: [dice.values[0], dice.values[1]],
+    rolled: true,
     isDoubles: Boolean(dice.isDoubles),
     noLegalMoves: Boolean(dice.noLegalMoves)
   };
 }
 
 function canCastleWithDice(dice) {
-  if (!dice || !Array.isArray(dice.values) || dice.values.length !== 2) return true;
+  if (!dice || dice.rolled === false || !Array.isArray(dice.values) || dice.values.length !== 2) {
+    return false;
+  }
   const [d1, d2] = dice.values;
   if (d1 === d2) return true;
   return (d1 === 6 && d2 === 4) || (d1 === 4 && d2 === 6);
@@ -426,6 +442,7 @@ function setDiceRoll(state, d1, d2) {
   const v2 = Math.max(1, Math.min(6, Math.floor(Number(d2) || 1)));
   state.dice = {
     values: [v1, v2],
+    rolled: true,
     isDoubles: v1 === v2,
     noLegalMoves: false
   };
@@ -439,28 +456,42 @@ function setDiceRoll(state, d1, d2) {
   return state;
 }
 
+function prepareTurnDice(state, fixedValues = null) {
+  if (!state || !getVariantDef(state).diceChess) return state;
+  if (Array.isArray(fixedValues) && fixedValues.length === 2) {
+    return setDiceRoll(state, fixedValues[0], fixedValues[1]);
+  }
+  state.dice = createPendingDiceState();
+  return state;
+}
+
 function rollDiceForState(state, fixedValues = null) {
   if (!state || !getVariantDef(state).diceChess) return state;
   if (Array.isArray(fixedValues) && fixedValues.length === 2) {
     return setDiceRoll(state, fixedValues[0], fixedValues[1]);
   }
-  const isOpeningTurn = Array.isArray(state.moveHistory) && state.moveHistory.length === 0;
-  const maxAttempts = isOpeningTurn ? 24 : 1;
-  for (let i = 0; i < maxAttempts; i++) {
-    setDiceRoll(state, rollSingleDie(), rollSingleDie());
-    if (!state.dice?.noLegalMoves) break;
-  }
-  return state;
+  return setDiceRoll(state, rollSingleDie(), rollSingleDie());
 }
 
 function applyDicePassTurn(state, fixedNextDice = null) {
-  if (!state || !getVariantDef(state).diceChess || state.status !== 'playing') return state;
+  if (
+    !state ||
+    !getVariantDef(state).diceChess ||
+    state.status !== 'playing' ||
+    !state.dice ||
+    state.dice.rolled === false ||
+    !state.dice.noLegalMoves
+  ) {
+    return state;
+  }
   const next = cloneState(state);
   const prevRoller = state.turn;
   const nextTurn = prevRoller === 'w' ? 'b' : 'w';
   const d1 = state.dice?.values?.[0] || 1;
   const d2 = state.dice?.values?.[1] || 1;
 
+  // Clear lastMove on a Pass ply so < / > navigation does not highlight or reverse-slide the earlier piece move
+  next.lastMove = null;
   next.enPassant = null;
   next.halfMoveClock += 1;
   if (prevRoller === 'b') {
@@ -482,7 +513,7 @@ function applyDicePassTurn(state, fixedNextDice = null) {
     next.status = 'draw_50';
     next.dice = null;
   } else {
-    rollDiceForState(next, fixedNextDice);
+    prepareTurnDice(next, fixedNextDice);
   }
 
   const san = `Pass ${d1}-${d2}`;
@@ -612,7 +643,7 @@ function createInitialState(variant = 'standard', options = {}) {
     dice: null
   };
   if (cleanVariant === 'dice') {
-    rollDiceForState(state, options.diceValues || null);
+    prepareTurnDice(state, options.diceValues || null);
   }
   const key = computePositionKey(state);
   state.positionCounts[key] = 1;
@@ -695,7 +726,7 @@ function createCustomState(config = {}) {
         state.status = 'stalemate';
         state.winner = null;
       } else {
-        rollDiceForState(state, config.diceValues || null);
+        prepareTurnDice(state, config.diceValues || null);
       }
     } else {
       const legalMoves = getAllLegalMoves(state);
@@ -1431,6 +1462,11 @@ function getLegalMovesForSquare(state, r, c) {
   const vDef = getVariantDef(state);
   const pieceColor = getPieceColor(code);
   const pieceType = getPieceType(code);
+  if (vDef.diceChess) {
+    if (!state.dice || state.dice.rolled === false || !Array.isArray(state.dice.values)) {
+      return [];
+    }
+  }
   const isDice = Boolean(vDef.diceChess && state.dice && Array.isArray(state.dice.values));
   const isWildTurn = Boolean(isDice && state.dice.isDoubles);
 
@@ -1961,7 +1997,7 @@ function applyMove(state, move, options = {}) {
         next.status = 'draw_material';
         next.dice = null;
       } else {
-        rollDiceForState(next, options.nextDice || null);
+        prepareTurnDice(next, options.nextDice || null);
       }
     } else {
       const opponentMoves = getAllLegalMoves(next, enemyColor);
@@ -2219,12 +2255,25 @@ function playSound(kind) {
       playToneNote(ctx, t + 0.09, 784, 0.11, 0.07, 'sine');
       break;
     case 'diceRoll':
-      playWoodTap(ctx, t, 220, 1320, 0.18, 0.036);
-      playWoodTap(ctx, t + 0.042, 265, 1480, 0.2, 0.038);
+      playWoodTap(ctx, t, 210, 1280, 0.16, 0.032);
+      playWoodTap(ctx, t + 0.044, 245, 1460, 0.18, 0.032);
+      playWoodTap(ctx, t + 0.095, 230, 1340, 0.19, 0.035);
+      playWoodTap(ctx, t + 0.152, 272, 1520, 0.17, 0.036);
       break;
+    case 'diceDoubles':
+      playToneNote(ctx, t, 523.25, 0.11, 0.13, 'triangle');
+      playToneNote(ctx, t + 0.055, 659.25, 0.12, 0.15, 'triangle');
+      playToneNote(ctx, t + 0.11, 783.99, 0.13, 0.18, 'triangle');
+      playToneNote(ctx, t + 0.165, 1046.5, 0.11, 0.24, 'sine');
+      break;
+    case 'diceBlocked':
     case 'dicePass':
-      playToneNote(ctx, t, 330, 0.09, 0.11, 'triangle');
-      playToneNote(ctx, t + 0.07, 261.63, 0.09, 0.13, 'triangle');
+      playWoodTap(ctx, t, 118, 560, 0.24, 0.055);
+      playToneNote(ctx, t + 0.015, 246.94, 0.11, 0.14, 'triangle');
+      playToneNote(ctx, t + 0.105, 185.0, 0.11, 0.18, 'triangle');
+      break;
+    case 'turnPass':
+      playWoodTap(ctx, t, 200, 920, 0.14, 0.03);
       break;
     default:
       break;
@@ -2238,6 +2287,10 @@ function playMoveFeedbackSound(prevState, nextState, isMyMove) {
   }
   const lastFrame = nextState.historyFrames[nextState.historyFrames.length - 1];
   const meta = lastFrame?.meta;
+  if (meta?.isPass) {
+    playSound('turnPass');
+    return;
+  }
 
   if (getVariantDef(nextState).fogOfWar) {
     if (!isMyMove) {
@@ -2867,13 +2920,18 @@ function validateAndHydrateState(raw) {
     : [];
 
   const cleanDiceObj = (d) => {
-    if (!d || typeof d !== 'object' || !Array.isArray(d.values) || d.values.length !== 2) {
+    if (!d || typeof d !== 'object') return null;
+    if (d.rolled === false || d.values === null) {
+      return createPendingDiceState();
+    }
+    if (!Array.isArray(d.values) || d.values.length !== 2) {
       return null;
     }
     const v1 = Math.max(1, Math.min(6, Math.floor(Number(d.values[0]) || 1)));
     const v2 = Math.max(1, Math.min(6, Math.floor(Number(d.values[1]) || 1)));
     return {
       values: [v1, v2],
+      rolled: true,
       isDoubles: v1 === v2,
       noLegalMoves: Boolean(d.noLegalMoves)
     };
@@ -3578,6 +3636,24 @@ function handleHostIncomingData(data) {
     return;
   }
 
+  if (data.type === 'dice_roll_request') {
+    if (
+      gameState.status === 'playing' &&
+      getVariantDef(gameState).diceChess &&
+      gameState.turn === guestColor &&
+      gameState.dice &&
+      gameState.dice.rolled === false &&
+      !opponentDisconnected
+    ) {
+      rollDiceForState(gameState);
+      clearSelection();
+      playDiceOutcomeSounds(gameState.dice);
+      broadcastHostState();
+      renderAll();
+    }
+    return;
+  }
+
   if (data.type === 'dice_pass') {
     if (
       gameState.status === 'playing' &&
@@ -3893,7 +3969,20 @@ function handleGuestIncomingData(data) {
       return;
     }
 
-    // 4. Same move count (name update, draw offer/decline, resignation, or timeout)
+    // 4. Same move count (name update, dice roll sync, draw offer/decline, resignation, or timeout)
+    const diceJustRolled = Boolean(
+      !wasJoining &&
+        prevStatus === 'playing' &&
+        gameState.status === 'playing' &&
+        getVariantDef(gameState).diceChess &&
+        (prevState?.dice?.rolled === false || !Array.isArray(prevState?.dice?.values)) &&
+        gameState.dice?.rolled !== false &&
+        Array.isArray(gameState.dice?.values)
+    );
+    if (diceJustRolled) {
+      playDiceOutcomeSounds(gameState.dice);
+    }
+
     if (prevStatus === 'playing' && gameState.status !== 'playing') {
       playSound('gameEnd');
       reconcileInteractionAfterTurnChange();
@@ -4719,6 +4808,9 @@ function cacheDom() {
   dom.secretConfirmBtn = document.getElementById('secret-confirm-btn');
 
   dom.diceBar = document.getElementById('dice-bar');
+  dom.diceAutoRollToggle = document.getElementById('dice-autoroll-toggle');
+  dom.diceFeltWell = document.getElementById('dice-felt-well');
+  dom.diceRollBtn = document.getElementById('dice-roll-btn');
   dom.dieCard1 = document.getElementById('die-card-1');
   dom.dieSvg1 = document.getElementById('die-svg-1');
   dom.diePieceImg1 = document.getElementById('die-piece-img-1');
@@ -4805,8 +4897,18 @@ function canPlayerMovePiece(color) {
   if (net.mode === 'waiting' || net.mode === 'joining' || net.mode === 'setup') return false;
   const isMyTurn = net.mode === 'online' ? gameState.turn === net.myColor : true;
   if (!isMyTurn) return false;
-  if (getVariantDef(gameState).diceChess && gameState.dice?.isDoubles) {
-    return color === 'w' || color === 'b';
+  if (getVariantDef(gameState).diceChess) {
+    if (
+      !gameState.dice ||
+      gameState.dice.rolled === false ||
+      !Array.isArray(gameState.dice.values) ||
+      gameState.dice.noLegalMoves
+    ) {
+      return false;
+    }
+    if (gameState.dice.isDoubles) {
+      return color === 'w' || color === 'b';
+    }
   }
   return color === gameState.turn;
 }
@@ -4854,13 +4956,41 @@ function cancelActiveDrag() {
 }
 
 let diceAutoPassTimer = null;
+let diceAutoRollTimer = null;
+let diceScrambleTimer = null;
+let diceAudioSettleTimer = null;
+let diceAutoRollEnabled = false;
 let lastRenderedDiceKey = '';
+
+function clearDiceAutoRollTimer() {
+  if (diceAutoRollTimer) {
+    clearTimeout(diceAutoRollTimer);
+    diceAutoRollTimer = null;
+  }
+}
+
+function clearDiceScrambleTimer() {
+  if (diceScrambleTimer) {
+    clearTimeout(diceScrambleTimer);
+    diceScrambleTimer = null;
+  }
+}
+
+function clearDiceAudioSettleTimer() {
+  if (diceAudioSettleTimer) {
+    clearTimeout(diceAudioSettleTimer);
+    diceAudioSettleTimer = null;
+  }
+}
 
 function clearDiceAutoPassTimer() {
   if (diceAutoPassTimer) {
     clearTimeout(diceAutoPassTimer);
     diceAutoPassTimer = null;
   }
+  clearDiceAutoRollTimer();
+  clearDiceScrambleTimer();
+  clearDiceAudioSettleTimer();
 }
 
 function clearBoardTransientUI() {
@@ -6644,6 +6774,10 @@ function renderBoard() {
     viewingLive &&
       getVariantDef(gameState).diceChess &&
       gameState.status === 'playing' &&
+      gameState.dice &&
+      gameState.dice.rolled !== false &&
+      Array.isArray(gameState.dice.values) &&
+      !gameState.dice.noLegalMoves &&
       !opponentDisconnected &&
       net.mode !== 'waiting' &&
       net.mode !== 'setup' &&
@@ -7499,22 +7633,33 @@ const DIE_PIP_COORDS = {
   ]
 };
 
-function renderDieFaceSvg(svgEl, val, isDoubles, isDisabled) {
+function renderDieFaceSvg(svgEl, val, isDoubles, isDisabled, isUnrolled = false) {
   if (!svgEl) return;
   if (typeof svgEl.setAttribute === 'function') {
     svgEl.setAttribute('viewBox', '0 0 40 40');
   }
-  const cleanVal = Math.max(1, Math.min(6, Number(val) || 1));
-  const baseFill = isDisabled ? '#3a3833' : isDoubles ? '#b98324' : '#beb6a4';
-  const faceFill = isDisabled ? '#57544d' : isDoubles ? '#fff4d4' : '#f4efe3';
-  const faceStroke = isDisabled ? '#44413b' : isDoubles ? '#e2a93f' : '#dfd8c7';
-  const pipFill = isDisabled
-    ? '#252320'
-    : cleanVal === 1
-      ? '#b5332a'
+  const cleanVal = isUnrolled ? null : Math.max(1, Math.min(6, Number(val) || 1));
+  const baseFill = isUnrolled
+    ? '#8a8579'
+    : isDisabled
+      ? '#3a3833'
       : isDoubles
-        ? '#362105'
-        : '#1d1b18';
+        ? '#b98324'
+        : '#beb6a4';
+  const faceFill = isUnrolled
+    ? '#dcd6c6'
+    : isDisabled
+      ? '#57544d'
+      : isDoubles
+        ? '#fff4d4'
+        : '#f4efe3';
+  const faceStroke = isUnrolled
+    ? '#c3bca9'
+    : isDisabled
+      ? '#44413b'
+      : isDoubles
+        ? '#e2a93f'
+        : '#dfd8c7';
 
   const children = [];
   children.push(
@@ -7542,6 +7687,36 @@ function renderDieFaceSvg(svgEl, val, isDoubles, isDisabled) {
     })
   );
 
+  if (isUnrolled || cleanVal === null) {
+    children.push(
+      createSvgEl('path', {
+        d: 'M16.1 14.3 C16.1 11.7 17.9 10.2 20.1 10.2 C22.5 10.2 24.1 11.6 24.1 13.7 C24.1 15.4 23.0 16.4 21.4 17.3 C20.2 18.0 19.8 18.7 19.8 20.2 L19.8 21.1',
+        fill: 'none',
+        stroke: '#4f4a3f',
+        'stroke-width': 2.5,
+        'stroke-linecap': 'round'
+      })
+    );
+    children.push(
+      createSvgEl('circle', {
+        cx: 19.8,
+        cy: 24.8,
+        r: 1.65,
+        fill: '#4f4a3f'
+      })
+    );
+    svgEl.replaceChildren(...children);
+    return;
+  }
+
+  const pipFill = isDisabled
+    ? '#252320'
+    : cleanVal === 1
+      ? '#b5332a'
+      : isDoubles
+        ? '#362105'
+        : '#1d1b18';
+
   const pips = DIE_PIP_COORDS[cleanVal] || DIE_PIP_COORDS[1];
   const r = cleanVal === 1 ? 4.4 : cleanVal === 6 ? 3.15 : 3.4;
   for (const [cx, cy] of pips) {
@@ -7556,6 +7731,125 @@ function renderDieFaceSvg(svgEl, val, isDoubles, isDisabled) {
   }
 
   svgEl.replaceChildren(...children);
+}
+
+function canCurrentUserRollDice() {
+  if (!isViewingLive()) return false;
+  if (gameState.status !== 'playing' || opponentDisconnected) return false;
+  if (!getVariantDef(gameState).diceChess) return false;
+  if (
+    net.mode === 'waiting' ||
+    net.mode === 'setup' ||
+    net.mode === 'joining' ||
+    net.mode === 'editor'
+  ) {
+    return false;
+  }
+  if (!gameState.dice || gameState.dice.rolled !== false) return false;
+  if (net.mode === 'online' && gameState.turn !== net.myColor) return false;
+  return true;
+}
+
+function playDiceOutcomeSounds(diceState) {
+  if (!diceState || diceState.rolled === false || !Array.isArray(diceState.values)) return;
+  playSound('diceRoll');
+  const followKind = diceState.isDoubles
+    ? 'diceDoubles'
+    : diceState.noLegalMoves
+      ? 'diceBlocked'
+      : null;
+  if (!followKind) return;
+  clearDiceAudioSettleTimer();
+  if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+    diceAudioSettleTimer = setTimeout(() => {
+      diceAudioSettleTimer = null;
+      playSound(followKind);
+    }, 240);
+  } else {
+    playSound(followKind);
+  }
+}
+
+function setDiceAutoRoll(enabled) {
+  diceAutoRollEnabled = Boolean(enabled);
+  if (dom.diceAutoRollToggle) {
+    dom.diceAutoRollToggle.checked = diceAutoRollEnabled;
+  }
+  try {
+    localStorage.setItem('chess_dice_autoroll', diceAutoRollEnabled ? '1' : '0');
+  } catch (_) {}
+  if (diceAutoRollEnabled) {
+    scheduleDiceAutoRollIfNeeded();
+  } else {
+    clearDiceAutoRollTimer();
+  }
+}
+
+function executeDiceRollRequest() {
+  clearDiceAutoRollTimer();
+  clearDiceScrambleTimer();
+  if (!canCurrentUserRollDice()) return false;
+
+  if (net.mode === 'online' && net.role === 'guest') {
+    if (isLogicalConnOpen(net.conn)) {
+      sendPacket(net.conn, { type: 'dice_roll_request' });
+      return true;
+    }
+    return false;
+  }
+
+  rollDiceForState(gameState);
+  clearSelection();
+  playDiceOutcomeSounds(gameState.dice);
+  if (net.mode === 'online' && net.role === 'host') {
+    broadcastHostState();
+  }
+  renderAll();
+  return true;
+}
+
+function scheduleDiceAutoRollIfNeeded() {
+  if (!diceAutoRollEnabled || !canCurrentUserRollDice()) {
+    clearDiceAutoRollTimer();
+    return;
+  }
+  if (typeof window === 'undefined' || diceAutoRollTimer) return;
+  diceAutoRollTimer = setTimeout(() => {
+    diceAutoRollTimer = null;
+    executeDiceRollRequest();
+  }, 240);
+}
+
+function startDiceScrambleAnimation(targetV1, targetV2, isDoubles, dis1, dis2) {
+  clearDiceScrambleTimer();
+  if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+    renderDieFaceSvg(dom.dieSvg1, targetV1, isDoubles, dis1, false);
+    renderDieFaceSvg(dom.dieSvg2, targetV2, isDoubles, dis2, false);
+    return;
+  }
+  const steps = 4;
+  let step = 0;
+  const pickTransient = (target, offset) => {
+    const candidate = ((target + step + offset) % 6) + 1;
+    return candidate === target ? (candidate % 6) + 1 : candidate;
+  };
+  const tick = () => {
+    if (!dom.dieSvg1 || !dom.dieSvg2) {
+      clearDiceScrambleTimer();
+      return;
+    }
+    if (step < steps) {
+      renderDieFaceSvg(dom.dieSvg1, pickTransient(targetV1, step), false, false, false);
+      renderDieFaceSvg(dom.dieSvg2, pickTransient(targetV2, step + 2), false, false, false);
+      step += 1;
+      diceScrambleTimer = setTimeout(tick, 62);
+    } else {
+      diceScrambleTimer = null;
+      renderDieFaceSvg(dom.dieSvg1, targetV1, isDoubles, dis1, false);
+      renderDieFaceSvg(dom.dieSvg2, targetV2, isDoubles, dis2, false);
+    }
+  };
+  tick();
 }
 
 function executeDicePassTurn() {
@@ -7591,7 +7885,7 @@ function executeDicePassTurn() {
         viewPly = gameState.moveHistory.length;
       }
       clearSelection();
-      playSound('dicePass');
+      playSound('turnPass');
       broadcastHostState();
       reconcileInteractionAfterTurnChange();
       renderAll();
@@ -7605,17 +7899,18 @@ function executeDicePassTurn() {
     viewPly = gameState.moveHistory.length;
   }
   clearSelection();
-  playSound('dicePass');
+  playSound('turnPass');
   renderAll();
 }
 
 function scheduleDiceAutoPassIfNeeded() {
-  clearDiceAutoPassTimer();
+  clearDiceAutoPassTimerOnly();
   if (typeof window === 'undefined') return;
   if (
     !isViewingLive() ||
     gameState.status !== 'playing' ||
     !getVariantDef(gameState).diceChess ||
+    gameState.dice?.rolled === false ||
     !gameState.dice?.noLegalMoves ||
     opponentDisconnected
   ) {
@@ -7633,9 +7928,22 @@ function scheduleDiceAutoPassIfNeeded() {
   }, 1250);
 }
 
+function clearDiceAutoPassTimerOnly() {
+  if (diceAutoPassTimer) {
+    clearTimeout(diceAutoPassTimer);
+    diceAutoPassTimer = null;
+  }
+}
+
 function handleDieCardClick(dieIndex) {
+  if (canCurrentUserRollDice()) {
+    executeDiceRollRequest();
+    return;
+  }
   if (!isViewingLive() || gameState.status !== 'playing') return;
-  if (!getVariantDef(gameState).diceChess || !gameState.dice?.values) return;
+  if (!getVariantDef(gameState).diceChess || gameState.dice?.rolled === false || !gameState.dice?.values) {
+    return;
+  }
   if (net.mode === 'online' && gameState.turn !== net.myColor) return;
 
   const val = gameState.dice.values[dieIndex === 2 ? 1 : 0];
@@ -7693,24 +8001,96 @@ function renderDiceBar() {
       net.mode !== 'joining'
   );
   dom.diceBar.classList.toggle('hidden', !showDice);
+  if (typeof document !== 'undefined' && document.body && document.body.classList) {
+    document.body.classList.toggle('dice-mode', showDice);
+  }
   if (!showDice) {
     clearDiceAutoPassTimer();
     return;
   }
 
+  if (dom.diceAutoRollToggle) {
+    dom.diceAutoRollToggle.checked = diceAutoRollEnabled;
+  }
+
   const viewingLive = isViewingLive();
   const frame = getDisplayedFrame();
-  const diceState = viewingLive ? gameState.dice : frame.dice || gameState.dice;
-  if (!diceState || !Array.isArray(diceState.values) || diceState.values.length !== 2) {
-    dom.diceBar.classList.add('hidden');
-    clearDiceAutoPassTimer();
+  const diceState = viewingLive ? gameState.dice : frame.dice || createPendingDiceState();
+  const turnColor = viewingLive ? gameState.turn : frame.turn || gameState.turn;
+  const turnPly = viewingLive ? gameState.moveHistory.length : viewPly;
+  const isUnrolled = Boolean(
+    !diceState || diceState.rolled === false || !Array.isArray(diceState.values) || diceState.values.length !== 2
+  );
+  const canRollNow = isUnrolled && canCurrentUserRollDice();
+
+  if (dom.diceFeltWell) {
+    dom.diceFeltWell.classList.toggle('can-roll', canRollNow);
+  }
+
+  if (isUnrolled) {
+    clearDiceScrambleTimer();
+    clearDiceAutoPassTimerOnly();
+    lastRenderedDiceKey = `${turnPly}:pending:${turnColor}`;
+
+    renderDieFaceSvg(dom.dieSvg1, null, false, false, true);
+    renderDieFaceSvg(dom.dieSvg2, null, false, false, true);
+
+    if (dom.dieCard1) {
+      dom.dieCard1.classList.add('die-unrolled');
+      dom.dieCard1.classList.remove('die-doubles', 'die-disabled', 'die-selected', 'rolling');
+    }
+    if (dom.dieCard2) {
+      dom.dieCard2.classList.add('die-unrolled');
+      dom.dieCard2.classList.remove('die-doubles', 'die-disabled', 'die-selected', 'rolling');
+    }
+    if (dom.diceFeltWell) {
+      dom.diceFeltWell.classList.remove('rolling');
+    }
+    if (dom.diePieceImg1 && typeof dom.diePieceImg1.removeAttribute === 'function') {
+      dom.diePieceImg1.removeAttribute('src');
+    }
+    if (dom.diePieceImg2 && typeof dom.diePieceImg2.removeAttribute === 'function') {
+      dom.diePieceImg2.removeAttribute('src');
+    }
+    if (dom.dieLabel1) dom.dieLabel1.textContent = '?';
+    if (dom.dieLabel2) dom.dieLabel2.textContent = '?';
+
+    dom.diceBar.classList.remove('doubles-active', 'no-moves-active');
+    if (dom.diceDoublesBadge) dom.diceDoublesBadge.classList.add('hidden');
+    if (dom.diceCastleBadge) dom.diceCastleBadge.classList.add('hidden');
+    if (dom.diceSkipBadge) dom.diceSkipBadge.classList.add('hidden');
+    if (dom.diceSkipBtn) dom.diceSkipBtn.classList.add('hidden');
+
+    if (dom.diceRollBtn) {
+      const showBtn = viewingLive && gameState.status === 'playing';
+      dom.diceRollBtn.classList.toggle('hidden', !showBtn);
+      dom.diceRollBtn.disabled = !canRollNow;
+      dom.diceRollBtn.textContent = canRollNow ? 'Roll Dice' : 'Waiting...';
+    }
+
+    if (dom.dicePromptText) {
+      const sideLabel = turnColor === 'w' ? 'White' : 'Black';
+      if (gameState.status !== 'playing') {
+        dom.dicePromptText.textContent = 'Game over';
+      } else if (!viewingLive) {
+        dom.dicePromptText.textContent = `${sideLabel}: before roll`;
+      } else if (net.mode === 'online' && turnColor !== net.myColor) {
+        dom.dicePromptText.textContent = `Waiting for ${sideLabel} to roll...`;
+      } else if (diceAutoRollEnabled) {
+        dom.dicePromptText.textContent = `${sideLabel}: auto-rolling...`;
+      } else {
+        dom.dicePromptText.textContent = `${sideLabel}: click dice to roll`;
+      }
+    }
+
+    scheduleDiceAutoRollIfNeeded();
     return;
   }
 
+  clearDiceAutoRollTimer();
   const [v1, v2] = diceState.values;
   const t1 = DICE_PIECE_MAP[v1] || 'p';
   const t2 = DICE_PIECE_MAP[v2] || 'p';
-  const turnColor = viewingLive ? gameState.turn : frame.turn || gameState.turn;
   const isDoubles = Boolean(diceState.isDoubles);
   const noMoves = Boolean(diceState.noLegalMoves);
 
@@ -7740,8 +8120,33 @@ function renderDiceBar() {
   const dis1 = viewingLive && gameState.status === 'playing' ? !hasMoves1 : false;
   const dis2 = viewingLive && gameState.status === 'playing' ? !hasMoves2 : false;
 
-  renderDieFaceSvg(dom.dieSvg1, v1, isDoubles, dis1);
-  renderDieFaceSvg(dom.dieSvg2, v2, isDoubles, dis2);
+  if (dom.dieCard1) dom.dieCard1.classList.remove('die-unrolled');
+  if (dom.dieCard2) dom.dieCard2.classList.remove('die-unrolled');
+  if (dom.diceRollBtn) {
+    dom.diceRollBtn.classList.add('hidden');
+    dom.diceRollBtn.disabled = true;
+  }
+
+  const rollKey = `${turnPly}:rolled:${v1}-${v2}:${turnColor}`;
+  const isNewRoll = viewingLive && rollKey !== lastRenderedDiceKey;
+  if (isNewRoll) {
+    lastRenderedDiceKey = rollKey;
+    if (dom.dieCard1 && dom.dieCard2) {
+      dom.dieCard1.classList.remove('rolling');
+      dom.dieCard2.classList.remove('rolling');
+      if (dom.diceFeltWell) dom.diceFeltWell.classList.remove('rolling');
+      if (typeof dom.dieCard1.offsetWidth === 'number') {
+        void dom.dieCard1.offsetWidth;
+      }
+      dom.dieCard1.classList.add('rolling');
+      dom.dieCard2.classList.add('rolling');
+      if (dom.diceFeltWell) dom.diceFeltWell.classList.add('rolling');
+    }
+    startDiceScrambleAnimation(v1, v2, isDoubles, dis1, dis2);
+  } else if (!diceScrambleTimer) {
+    renderDieFaceSvg(dom.dieSvg1, v1, isDoubles, dis1, false);
+    renderDieFaceSvg(dom.dieSvg2, v2, isDoubles, dis2, false);
+  }
 
   if (dom.diePieceImg1) {
     dom.diePieceImg1.src = getPieceSvgDataUri(turnColor + t1);
@@ -7771,20 +8176,6 @@ function renderDiceBar() {
     dom.dieCard2.classList.toggle('die-doubles', isDoubles && !noMoves);
     dom.dieCard2.classList.toggle('die-disabled', dis2);
     dom.dieCard2.classList.toggle('die-selected', Boolean(!dis2 && selType === t2));
-  }
-
-  const rollKey = `${gameState.moveHistory.length}:${v1}-${v2}:${turnColor}`;
-  if (viewingLive && rollKey !== lastRenderedDiceKey) {
-    lastRenderedDiceKey = rollKey;
-    if (dom.dieCard1 && dom.dieCard2) {
-      dom.dieCard1.classList.remove('rolling');
-      dom.dieCard2.classList.remove('rolling');
-      if (typeof dom.dieCard1.offsetWidth === 'number') {
-        void dom.dieCard1.offsetWidth;
-      }
-      dom.dieCard1.classList.add('rolling');
-      dom.dieCard2.classList.add('rolling');
-    }
   }
 
   const canCastleRight = Boolean(
@@ -7871,26 +8262,34 @@ function stepHistoryTo(targetPly) {
 
   if (delta === 1) {
     const frame = getFrameForPly(clamped);
-    queueSlideAnimationFromFrame(frame, false);
-    const moverColor = (clamped - 1) % 2 === 0 ? 'w' : 'b';
-    const hideMetaAudio = fogActive && moverColor !== viewerColor && !frame?.lastMove?.to;
-    if (hideMetaAudio) {
-      playSound('moveSelf');
-    } else if (frame?.inCheck && !getVariantDef(gameState).royalCaptureWins) {
-      playSound('check');
-    } else if (frame?.meta?.promotion) {
-      playSound('promote');
-    } else if (frame?.meta?.castleSide) {
-      playSound('castle');
-    } else if (frame?.meta?.isCapture) {
-      playSound('capture');
+    if (frame?.meta?.isPass) {
+      playSound('turnPass');
     } else {
-      playSound('moveSelf');
+      queueSlideAnimationFromFrame(frame, false);
+      const moverColor = (clamped - 1) % 2 === 0 ? 'w' : 'b';
+      const hideMetaAudio = fogActive && moverColor !== viewerColor && !frame?.lastMove?.to;
+      if (hideMetaAudio) {
+        playSound('moveSelf');
+      } else if (frame?.inCheck && !getVariantDef(gameState).royalCaptureWins) {
+        playSound('check');
+      } else if (frame?.meta?.promotion) {
+        playSound('promote');
+      } else if (frame?.meta?.castleSide) {
+        playSound('castle');
+      } else if (frame?.meta?.isCapture) {
+        playSound('capture');
+      } else {
+        playSound('moveSelf');
+      }
     }
   } else if (delta === -1) {
     const undoneFrame = getFrameForPly(prevPly);
-    queueSlideAnimationFromFrame(undoneFrame, true);
-    playSound('moveSelf');
+    if (undoneFrame?.meta?.isPass) {
+      playSound('turnPass');
+    } else {
+      queueSlideAnimationFromFrame(undoneFrame, true);
+      playSound('moveSelf');
+    }
   }
 
   renderAll();
@@ -8620,7 +9019,7 @@ function startOnlineGameFromEditor() {
 function initUI() {
   cacheDom();
 
-  // Restore saved preferences (name, theme, sound)
+  // Restore saved preferences (name, theme, sound, dice auto-roll)
   try {
     const savedName = localStorage.getItem('chess_display_name');
     if (savedName) dom.nameInput.value = savedName.slice(0, 18);
@@ -8628,7 +9027,12 @@ function initUI() {
     if (savedTheme) applyBoardTheme(savedTheme);
     const savedSound = localStorage.getItem('chess_sound_enabled');
     if (savedSound === '0') soundEnabled = false;
+    const savedAutoRoll = localStorage.getItem('chess_dice_autoroll');
+    if (savedAutoRoll === '1') diceAutoRollEnabled = true;
   } catch (_) {}
+  if (dom.diceAutoRollToggle) {
+    dom.diceAutoRollToggle.checked = diceAutoRollEnabled;
+  }
 
   syncMyNameFromInput();
   updateSoundToggleUI();
@@ -9210,6 +9614,21 @@ function initUI() {
     });
   }
 
+  if (dom.diceAutoRollToggle) {
+    dom.diceAutoRollToggle.addEventListener('change', (e) => {
+      setDiceAutoRoll(Boolean(e.target?.checked));
+    });
+  }
+  if (dom.diceRollBtn) {
+    dom.diceRollBtn.addEventListener('click', () => executeDiceRollRequest());
+  }
+  if (dom.diceFeltWell) {
+    dom.diceFeltWell.addEventListener('click', (e) => {
+      if (e.target === dom.diceFeltWell && canCurrentUserRollDice()) {
+        executeDiceRollRequest();
+      }
+    });
+  }
   if (dom.dieCard1) {
     dom.dieCard1.addEventListener('click', () => handleDieCardClick(1));
   }
@@ -9355,8 +9774,10 @@ if (typeof module !== 'undefined' && module.exports) {
     editorState,
     DICE_PIECE_MAP,
     PIECE_TO_DIE_MAP,
+    createPendingDiceState,
     canCastleWithDice,
     setDiceRoll,
+    prepareTurnDice,
     rollDiceForState,
     applyDicePassTurn
   };
